@@ -5,7 +5,7 @@ import time
 import signal
 import threading
 import subprocess
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import cv2
@@ -18,8 +18,13 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.qos import qos_profile_sensor_data  # <-- FIX: required import
+from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+
+from .theme import apply_dark_theme
+
+from .theme import apply_dark_theme
 
 
 def cv_to_qpixmap(bgr: np.ndarray) -> QPixmap:
@@ -78,6 +83,8 @@ class CamSubscriber(Node):
         self.bridge = CvBridge()
         self.lock = threading.Lock()
         self.latest: Optional[np.ndarray] = None
+        self._last_rx_mono: Optional[float] = None
+        self._ema_fps: float = 0.0
 
         self.sub = self.create_subscription(
             Image,
@@ -93,13 +100,28 @@ class CamSubscriber(Node):
         except Exception as e:
             self.get_logger().warn(f"raw decode failed: {e}")
             return
+        now_m = time.monotonic()
         with self.lock:
             self.latest = frame
+            if self._last_rx_mono is not None:
+                dt = max(1e-6, now_m - self._last_rx_mono)
+                fps = 1.0 / dt
+                self._ema_fps = fps if self._ema_fps <= 0.0 else (0.85 * self._ema_fps + 0.15 * fps)
+            self._last_rx_mono = now_m
 
     def get_latest(self) -> Optional[np.ndarray]:
         # <-- FIX: no frame.copy() (huge CPU/mem win). We only read in UI thread.
         with self.lock:
             return self.latest
+
+    def stats(self) -> Tuple[float, float]:
+        """Returns (age_s, fps_ema)."""
+        with self.lock:
+            t = self._last_rx_mono
+            fps = self._ema_fps
+        if t is None:
+            return 1e9, fps
+        return max(0.0, time.monotonic() - t), fps
 
 
 class MainWindow(QWidget):
@@ -109,6 +131,12 @@ class MainWindow(QWidget):
         self.cam1 = cam1
 
         self.setWindowTitle("Touch Camera Viewer (ROS 2)")
+
+        # Connection indicators (use colored dot via stylesheet)
+        self.ind0 = QLabel("● Cam0")
+        self.ind1 = QLabel("● Cam1")
+        for ind in (self.ind0, self.ind1):
+            ind.setStyleSheet("font-weight:700;")
         self.left_label = QLabel("Left camera: waiting…")
         self.right_label = QLabel("Right camera: waiting…")
 
@@ -131,13 +159,23 @@ class MainWindow(QWidget):
         btn_row.addWidget(self.swap_btn)
         btn_row.addWidget(self.full_btn)
 
+        top_row = QHBoxLayout()
+        top_row.addWidget(self.ind0)
+        top_row.addWidget(self.ind1)
+        top_row.addStretch(1)
+
+        self.status = QLabel("Status: waiting for frames…")
+        self.status.setStyleSheet("background:#1B1B1B; border:1px solid #2B2B2B; border-radius:10px; padding:8px;")
+
         cams_row = QHBoxLayout()
         cams_row.addWidget(self.left_label, 1)
         cams_row.addWidget(self.right_label, 1)
 
         root = QVBoxLayout()
+        root.addLayout(top_row, 0)
         root.addLayout(cams_row, 1)
         root.addLayout(btn_row)
+        root.addWidget(self.status, 0)
         self.setLayout(root)
 
         self.left_is_cam0 = True
@@ -157,8 +195,24 @@ class MainWindow(QWidget):
         left_src = self.cam0 if self.left_is_cam0 else self.cam1
         right_src = self.cam1 if self.left_is_cam0 else self.cam0
 
+        # Update connection indicators
+        age0, fps0 = self.cam0.stats()
+        age1, fps1 = self.cam1.stats()
+        self._set_ind(self.ind0, ok=age0 < 0.7, warn=age0 < 2.0)
+        self._set_ind(self.ind1, ok=age1 < 0.7, warn=age1 < 2.0)
+        self.status.setText(f"Cam0 {fps0:4.1f} FPS (age {age0*1000:4.0f} ms)  |  Cam1 {fps1:4.1f} FPS (age {age1*1000:4.0f} ms)")
+
         self._render_label(self.left_label, left_src, "Left")
         self._render_label(self.right_label, right_src, "Right")
+
+    @staticmethod
+    def _set_ind(ind: QLabel, ok: bool, warn: bool = False) -> None:
+        if ok:
+            ind.setStyleSheet("color:#52D273; font-weight:700;")
+        elif warn:
+            ind.setStyleSheet("color:#F3C969; font-weight:700;")
+        else:
+            ind.setStyleSheet("color:#FF6B6B; font-weight:700;")
 
     def _render_label(self, label: QLabel, src: CamSubscriber, name: str) -> None:
         frame = src.get_latest()
@@ -188,7 +242,10 @@ def main() -> int:
     # Clean out any stale camera nodes from previous runs (prevents “busy” / weirdness)
     subprocess.run(["bash", "-lc", "pkill -f 'camera_ros.*camera_node' || true; pkill -f 'install/camera_ros/lib/camera_ros/camera_node' || true"], check=False)
 
-    rclpy.init()
+    ros_argv = sys.argv
+    qt_argv = remove_ros_args(sys.argv)
+
+    rclpy.init(args=ros_argv)
 
     cam0_proc = start_camera_ros("/cam0", CAM0_INDEX, WIDTH, HEIGHT, FPS)
     cam1_proc = start_camera_ros("/cam1", CAM1_INDEX, WIDTH, HEIGHT, FPS)
@@ -203,7 +260,8 @@ def main() -> int:
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
 
-    app = QApplication(sys.argv)
+    app = QApplication(qt_argv)
+    apply_dark_theme(app)
     w = MainWindow(cam0, cam1)
     w.showFullScreen()
     ret = app.exec()

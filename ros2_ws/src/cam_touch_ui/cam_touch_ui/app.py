@@ -257,19 +257,37 @@ def main() -> int:
     executor.add_node(cam0)
     executor.add_node(cam1)
 
-    spin_thread = threading.Thread(target=executor.spin, daemon=True)
-    spin_thread.start()
-
     app = QApplication(qt_argv)
     apply_dark_theme(app)
+
+    # Integrate ROS spinning into the Qt event loop (avoids non-QThread warnings)
+    spin_timer = QTimer()
+    spin_timer.setInterval(10)  # ms
+
+    def _spin_ros_once():
+        try:
+            executor.spin_once(timeout_sec=0.0)
+        except Exception:
+            try:
+                spin_timer.stop()
+            except Exception:
+                pass
+
+    spin_timer.timeout.connect(_spin_ros_once)
+    spin_timer.start()
     w = MainWindow(cam0, cam1)
     w.showFullScreen()
     ret = app.exec()
 
+    try:
+        spin_timer.stop()
+    except Exception:
+        pass
+
     executor.shutdown()
     cam0.destroy_node()
     cam1.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
 
     kill_process_group(cam0_proc)
     kill_process_group(cam1_proc)

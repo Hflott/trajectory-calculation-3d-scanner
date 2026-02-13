@@ -248,6 +248,11 @@ class MainWindow(QWidget):
         self._res0_pix: Optional[QPixmap] = None
         self._res1_pix: Optional[QPixmap] = None
 
+        # When capturing a still image, we intentionally pause/stop the preview camera
+        # pipelines (to give libcamera exclusive access for rpicam-still). Keep the
+        # last frame on-screen instead of flashing "no signal".
+        self._preview_paused: bool = False
+
         # User-settable values (persisted)
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
         self.jpeg_quality = int(self.ros_node.get_parameter("jpeg_quality").value)
@@ -444,6 +449,10 @@ class MainWindow(QWidget):
 
     def refresh_preview(self):
         self._update_indicators()
+        if self._preview_paused:
+            self.prev0_info.setText("paused for capture…")
+            self.prev1_info.setText("paused for capture…")
+            return
         self._render_preview(self.prev0, self.prev0_info, self.cam0, "Cam0")
         self._render_preview(self.prev1, self.prev1_info, self.cam1, "Cam1")
 
@@ -472,8 +481,10 @@ class MainWindow(QWidget):
         label.setPixmap(pix)  # already sized; no Qt scaling here
 
     def _update_indicators(self) -> None:
-        def set_ind(ind: QLabel, ok: bool, warn: bool = False):
-            if ok:
+        def set_ind(ind: QLabel, ok: bool, warn: bool = False, paused: bool = False):
+            if paused:
+                ind.setStyleSheet("color:#74A8FF; font-weight:700;")
+            elif ok:
                 ind.setStyleSheet("color:#52D273; font-weight:700;")
             elif warn:
                 ind.setStyleSheet("color:#F3C969; font-weight:700;")
@@ -482,8 +493,9 @@ class MainWindow(QWidget):
 
         age0, _ = self.cam0.stream_stats()
         age1, _ = self.cam1.stream_stats()
-        set_ind(self.ind_cam0, ok=self.cam0.got_first_frame() and age0 < 0.7, warn=self.cam0.got_first_frame())
-        set_ind(self.ind_cam1, ok=self.cam1.got_first_frame() and age1 < 0.7, warn=self.cam1.got_first_frame())
+        paused = self._preview_paused
+        set_ind(self.ind_cam0, ok=self.cam0.got_first_frame() and age0 < 0.7, warn=self.cam0.got_first_frame(), paused=paused)
+        set_ind(self.ind_cam1, ok=self.cam1.got_first_frame() and age1 < 0.7, warn=self.cam1.got_first_frame(), paused=paused)
         set_ind(self.ind_srv, ok=self.ros_node.service_ready(), warn=False)
 
         # Gate capture button on service readiness
@@ -503,6 +515,7 @@ class MainWindow(QWidget):
         self.capture_btn.setEnabled(False)
         self.capture_btn.setText("CAPTURING…")
         self.status.setText("Status: capturing…")
+        self._preview_paused = True
 
         session = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._capture_started_mono = time.monotonic()
@@ -519,12 +532,14 @@ class MainWindow(QWidget):
                 self._log("Capture timeout (>12s)")
                 self._capture_poll.stop()
                 self._capture_future = None
+                self._preview_paused = False
                 self.capture_btn.setEnabled(True)
                 self.capture_btn.setText("CAPTURE (12MP JPEG)")
             return
 
         self._capture_poll.stop()
         self._capture_future = None
+        self._preview_paused = False
 
         try:
             resp = fut.result()
@@ -626,20 +641,42 @@ def main():
     executor.add_node(app_node)
     executor.add_node(cam0)
     executor.add_node(cam1)
-    threading.Thread(target=executor.spin, daemon=True).start()
 
     app = QApplication(qt_argv)
     apply_dark_theme(app)
+
+    # Integrate ROS spinning into the Qt event loop (avoids non-QThread warnings)
+    spin_timer = QTimer()
+    spin_timer.setInterval(10)  # ms; keeps CPU reasonable on a Pi
+
+    def _spin_ros_once():
+        try:
+            executor.spin_once(timeout_sec=0.0)
+        except Exception:
+            # During shutdown, spin_once may throw; stop the timer to avoid log spam.
+            try:
+                spin_timer.stop()
+            except Exception:
+                pass
+
+    spin_timer.timeout.connect(_spin_ros_once)
+    spin_timer.start()
+
     w = MainWindow(app_node, cam0, cam1)
     w.setWindowState(w.windowState() | Qt.WindowFullScreen)
     w.show()
     ret = app.exec()
 
+    try:
+        spin_timer.stop()
+    except Exception:
+        pass
+
     executor.shutdown()
     app_node.destroy_node()
     cam0.destroy_node()
     cam1.destroy_node()
-    rclpy.shutdown()
+    rclpy.try_shutdown()
     return int(ret)
 
 

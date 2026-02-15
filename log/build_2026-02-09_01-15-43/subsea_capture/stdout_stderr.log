@@ -1,0 +1,22 @@
+running develop
+running egg_info
+creating subsea_capture.egg-info
+writing subsea_capture.egg-info/PKG-INFO
+writing dependency_links to subsea_capture.egg-info/dependency_links.txt
+writing entry points to subsea_capture.egg-info/entry_points.txt
+writing requirements to subsea_capture.egg-info/requires.txt
+writing top-level names to subsea_capture.egg-info/top_level.txt
+writing manifest file 'subsea_capture.egg-info/SOURCES.txt'
+reading manifest file 'subsea_capture.egg-info/SOURCES.txt'
+writing manifest file 'subsea_capture.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages/subsea-capture.egg-link (link to .)
+Installing capture_service script to /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/subsea_capture
+
+Installed /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture
+running symlink_data
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index/packages
+symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/resource/subsea_capture -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index/packages
+symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/package.xml -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture

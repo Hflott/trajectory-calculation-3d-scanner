@@ -1,0 +1,24 @@
+[2.201s] Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/build --no-deps symlink_data
+[2.812s] running develop
+[3.203s] running egg_info
+[3.205s] creating subsea_bringup.egg-info
+[3.267s] writing subsea_bringup.egg-info/PKG-INFO
+[3.267s] writing dependency_links to subsea_bringup.egg-info/dependency_links.txt
+[3.269s] writing requirements to subsea_bringup.egg-info/requires.txt
+[3.270s] writing top-level names to subsea_bringup.egg-info/top_level.txt
+[3.270s] writing manifest file 'subsea_bringup.egg-info/SOURCES.txt'
+[3.459s] reading manifest file 'subsea_bringup.egg-info/SOURCES.txt'
+[3.461s] writing manifest file 'subsea_bringup.egg-info/SOURCES.txt'
+[3.537s] running build_ext
+[3.538s] Creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages/subsea-bringup.egg-link (link to .)
+[3.539s] 
+[3.539s] Installed /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup
+[3.539s] running symlink_data
+[3.541s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/ament_index
+[3.542s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/ament_index/resource_index
+[3.542s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/ament_index/resource_index/packages
+[3.543s] symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/resource/subsea_bringup -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/ament_index/resource_index/packages
+[3.546s] symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/package.xml -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup
+[3.548s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/launch
+[3.549s] symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/subsea_bringup/rover_app.launch.py -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/launch
+[3.710s] Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/build --no-deps symlink_data

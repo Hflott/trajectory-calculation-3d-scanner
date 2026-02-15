@@ -1,0 +1,13 @@
+package.xml
+setup.cfg
+setup.py
+resource/subsea_capture
+subsea_capture/__init__.py
+subsea_capture/capture_service.py
+subsea_capture.egg-info/PKG-INFO
+subsea_capture.egg-info/SOURCES.txt
+subsea_capture.egg-info/dependency_links.txt
+subsea_capture.egg-info/entry_points.txt
+subsea_capture.egg-info/requires.txt
+subsea_capture.egg-info/top_level.txt
+subsea_capture.egg-info/zip-safe

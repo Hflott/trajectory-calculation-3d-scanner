@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: subsea-capture
+Version: 0.0.1
+Summary: Dual-camera still capture service using rpicam-still
+Maintainer: subseascanning
+Maintainer-email: 
+License: MIT

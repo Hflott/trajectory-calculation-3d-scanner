@@ -1,0 +1,22 @@
+running develop
+running egg_info
+creating subsea_ui.egg-info
+writing subsea_ui.egg-info/PKG-INFO
+writing dependency_links to subsea_ui.egg-info/dependency_links.txt
+writing entry points to subsea_ui.egg-info/entry_points.txt
+writing requirements to subsea_ui.egg-info/requires.txt
+writing top-level names to subsea_ui.egg-info/top_level.txt
+writing manifest file 'subsea_ui.egg-info/SOURCES.txt'
+reading manifest file 'subsea_ui.egg-info/SOURCES.txt'
+writing manifest file 'subsea_ui.egg-info/SOURCES.txt'
+running build_ext
+Creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/python3.12/site-packages/subsea-ui.egg-link (link to .)
+Installing ui script to /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/subsea_ui
+
+Installed /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui
+running symlink_data
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/ament_index
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/ament_index/resource_index
+creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/ament_index/resource_index/packages
+symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/resource/subsea_ui -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/ament_index/resource_index/packages
+symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/package.xml -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui

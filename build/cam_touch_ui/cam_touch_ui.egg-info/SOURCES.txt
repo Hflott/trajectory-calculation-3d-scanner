@@ -1,0 +1,14 @@
+package.xml
+setup.cfg
+setup.py
+cam_touch_ui/__init__.py
+cam_touch_ui/app.py
+cam_touch_ui/theme.py
+cam_touch_ui.egg-info/PKG-INFO
+cam_touch_ui.egg-info/SOURCES.txt
+cam_touch_ui.egg-info/dependency_links.txt
+cam_touch_ui.egg-info/entry_points.txt
+cam_touch_ui.egg-info/requires.txt
+cam_touch_ui.egg-info/top_level.txt
+cam_touch_ui.egg-info/zip-safe
+resource/cam_touch_ui

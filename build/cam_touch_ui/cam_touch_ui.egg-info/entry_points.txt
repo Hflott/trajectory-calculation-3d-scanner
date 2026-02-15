@@ -1,0 +1,2 @@
+[console_scripts]
+cam_touch_ui = cam_touch_ui.app:main

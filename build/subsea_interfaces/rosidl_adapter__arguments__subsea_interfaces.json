@@ -1,0 +1,6 @@
+{
+  "package_name": "subsea_interfaces",
+  "non_idl_tuples": [
+    "/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces:srv/CapturePair.srv"
+  ]
+}

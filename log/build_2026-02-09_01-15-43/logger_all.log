@@ -1,0 +1,420 @@
+[0.315s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'build', '--symlink-install', '--event-handlers=console_direct+']
+[0.315s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='build', build_base='build', install_base='install', merge_install=False, symlink_install=True, test_result_base=None, continue_on_error=False, executor='parallel', parallel_workers=4, event_handlers=['console_direct+'], ignore_user_meta=False, metas=['./colcon.meta'], base_paths=['.'], packages_ignore=None, packages_ignore_regex=None, paths=None, packages_up_to=None, packages_up_to_regex=None, packages_above=None, packages_above_and_dependencies=None, packages_above_depth=None, packages_select_by_dep=None, packages_skip_by_dep=None, packages_skip_up_to=None, packages_select_build_failed=False, packages_skip_build_finished=False, packages_select_test_failures=False, packages_skip_test_passed=False, packages_select=None, packages_skip=None, packages_select_regex=None, packages_skip_regex=None, packages_start=None, packages_end=None, allow_overriding=[], cmake_args=None, cmake_target=None, cmake_target_skip_unavailable=False, cmake_clean_cache=False, cmake_clean_first=False, cmake_force_configure=False, meson_args=[], ament_cmake_args=None, catkin_cmake_args=None, catkin_skip_building_tests=False, mixin_files=None, mixin=None, verb_parser=<colcon_mixin.mixin.mixin_argument.MixinArgumentDecorator object at 0xffffa220f3e0>, verb_extension=<colcon_core.verb.build.BuildVerb object at 0xffffa23f6780>, main=<bound method BuildVerb.main of <colcon_core.verb.build.BuildVerb object at 0xffffa23f6780>>, mixin_verb=('build',))
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) check parameters
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) check parameters
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) check parameters
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) check parameters
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) discover
+[0.377s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) discover
+[0.377s] INFO:colcon.colcon_core.package_discovery:Crawling recursively for packages in '/home/subseascanning/trajectory-calculation-3d-scanner'
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ignore', 'ignore_ament_install']
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore'
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore_ament_install'
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_pkg']
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_pkg'
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_meta']
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_meta'
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ros']
+[0.378s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ros'
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['cmake', 'meson', 'python']
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'cmake'
+[0.443s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'meson'
+[0.445s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['python_setup_py']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python_setup_py'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extensions ['ignore', 'ignore_ament_install']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extension 'ignore'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(build) ignored
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extensions ['ignore', 'ignore_ament_install']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extension 'ignore'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(install) ignored
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extensions ['ignore', 'ignore_ament_install']
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extension 'ignore'
+[0.446s] Level 1:colcon.colcon_core.package_identification:_identify(log) ignored
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['ignore', 'ignore_ament_install']
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'ignore'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'ignore_ament_install'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['colcon_pkg']
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'colcon_pkg'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['colcon_meta']
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'colcon_meta'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['ros']
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'ros'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['cmake', 'meson', 'python']
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'cmake'
+[0.447s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'meson'
+[0.448s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'python'
+[0.448s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extensions ['python_setup_py']
+[0.448s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws) by extension 'python_setup_py'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/build) by extensions ['ignore', 'ignore_ament_install']
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/build) by extension 'ignore'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/build) ignored
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/install) by extensions ['ignore', 'ignore_ament_install']
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/install) by extension 'ignore'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/install) ignored
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/log) by extensions ['ignore', 'ignore_ament_install']
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/log) by extension 'ignore'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/log) ignored
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['ignore', 'ignore_ament_install']
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'ignore'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'ignore_ament_install'
+[0.449s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['colcon_pkg']
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'colcon_pkg'
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['colcon_meta']
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'colcon_meta'
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['ros']
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'ros'
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['cmake', 'meson', 'python']
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'cmake'
+[0.450s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'meson'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'python'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extensions ['python_setup_py']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src) by extension 'python_setup_py'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extensions ['ignore', 'ignore_ament_install']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extension 'ignore'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extension 'ignore_ament_install'
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extensions ['colcon_pkg']
+[0.451s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extension 'colcon_pkg'
+[0.452s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extensions ['colcon_meta']
+[0.452s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extension 'colcon_meta'
+[0.452s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extensions ['ros']
+[0.452s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/cam_touch_ui) by extension 'ros'
+[0.455s] DEBUG:colcon.colcon_core.package_identification:Package 'ros2_ws/src/cam_touch_ui' with type 'ros.ament_python' and name 'cam_touch_ui'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['ignore', 'ignore_ament_install']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'ignore'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'ignore_ament_install'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['colcon_pkg']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'colcon_pkg'
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['colcon_meta']
+[0.455s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'colcon_meta'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['ros']
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'ros'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['cmake', 'meson', 'python']
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'cmake'
+[0.456s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'meson'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'python'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extensions ['python_setup_py']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/camera_ros) by extension 'python_setup_py'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extensions ['ignore', 'ignore_ament_install']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extension 'ignore'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extension 'ignore_ament_install'
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extensions ['colcon_pkg']
+[0.457s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extension 'colcon_pkg'
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extensions ['colcon_meta']
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extension 'colcon_meta'
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extensions ['ros']
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_bringup) by extension 'ros'
+[0.458s] DEBUG:colcon.colcon_core.package_identification:Package 'ros2_ws/src/subsea_bringup' with type 'ros.ament_python' and name 'subsea_bringup'
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extensions ['ignore', 'ignore_ament_install']
+[0.458s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extension 'ignore'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extension 'ignore_ament_install'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extensions ['colcon_pkg']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extension 'colcon_pkg'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extensions ['colcon_meta']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extension 'colcon_meta'
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extensions ['ros']
+[0.459s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_capture) by extension 'ros'
+[0.460s] DEBUG:colcon.colcon_core.package_identification:Package 'ros2_ws/src/subsea_capture' with type 'ros.ament_python' and name 'subsea_capture'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extensions ['ignore', 'ignore_ament_install']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extension 'ignore'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extension 'ignore_ament_install'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extensions ['colcon_pkg']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extension 'colcon_pkg'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extensions ['colcon_meta']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extension 'colcon_meta'
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extensions ['ros']
+[0.460s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_interfaces) by extension 'ros'
+[0.461s] DEBUG:colcon.colcon_core.package_identification:Package 'ros2_ws/src/subsea_interfaces' with type 'ros.catkin' and name 'subsea_interfaces'
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extensions ['ignore', 'ignore_ament_install']
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extension 'ignore'
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extension 'ignore_ament_install'
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extensions ['colcon_pkg']
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extension 'colcon_pkg'
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extensions ['colcon_meta']
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extension 'colcon_meta'
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extensions ['ros']
+[0.461s] Level 1:colcon.colcon_core.package_identification:_identify(ros2_ws/src/subsea_ui) by extension 'ros'
+[0.462s] DEBUG:colcon.colcon_core.package_identification:Package 'ros2_ws/src/subsea_ui' with type 'ros.ament_python' and name 'subsea_ui'
+[0.462s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) using defaults
+[0.462s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) discover
+[0.462s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) using defaults
+[0.462s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) discover
+[0.462s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) using defaults
+[0.482s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) check parameters
+[0.482s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) discover
+[0.483s] WARNING:colcon.colcon_core.prefix_path.colcon:The path '/home/subseascanning/ros2_ws/install' in the environment variable COLCON_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.ament:The path '/home/subseascanning/ros2_ws/install/subsea_ui' in the environment variable AMENT_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.ament:The path '/home/subseascanning/ros2_ws/install/subsea_capture' in the environment variable AMENT_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.ament:The path '/home/subseascanning/ros2_ws/install/subsea_bringup' in the environment variable AMENT_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.ament:The path '/home/subseascanning/ros2_ws/install/camera_ros' in the environment variable AMENT_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.ament:The path '/home/subseascanning/ros2_ws/install/cam_touch_ui' in the environment variable AMENT_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.catkin:The path '/home/subseascanning/ros2_ws/install/subsea_interfaces' in the environment variable CMAKE_PREFIX_PATH doesn't exist
+[0.484s] WARNING:colcon.colcon_ros.prefix_path.catkin:The path '/home/subseascanning/ros2_ws/install/camera_ros' in the environment variable CMAKE_PREFIX_PATH doesn't exist
+[0.486s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 5 installed packages in /home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/install
+[0.489s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 301 installed packages in /opt/ros/jazzy
+[0.493s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) using defaults
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_args' from command line to 'None'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_target' from command line to 'None'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_clean_cache' from command line to 'False'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_clean_first' from command line to 'False'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'cmake_force_configure' from command line to 'False'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'meson_args' from command line to '[]'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'ament_cmake_args' from command line to 'None'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'catkin_cmake_args' from command line to 'None'
+[0.577s] Level 5:colcon.colcon_core.verb:set package 'cam_touch_ui' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.577s] DEBUG:colcon.colcon_core.verb:Building package 'cam_touch_ui' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui', 'merge_install': False, 'meson_args': [], 'path': '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/cam_touch_ui', 'symlink_install': True, 'test_result_base': None}
+[0.590s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_args' from command line to 'None'
+[0.590s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_target' from command line to 'None'
+[0.590s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.590s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_clean_cache' from command line to 'False'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_clean_first' from command line to 'False'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'cmake_force_configure' from command line to 'False'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'meson_args' from command line to '[]'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'ament_cmake_args' from command line to 'None'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'catkin_cmake_args' from command line to 'None'
+[0.591s] Level 5:colcon.colcon_core.verb:set package 'subsea_bringup' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.591s] DEBUG:colcon.colcon_core.verb:Building package 'subsea_bringup' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup', 'merge_install': False, 'meson_args': [], 'path': '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_bringup', 'symlink_install': True, 'test_result_base': None}
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_args' from command line to 'None'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_target' from command line to 'None'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_clean_cache' from command line to 'False'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_clean_first' from command line to 'False'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'cmake_force_configure' from command line to 'False'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'meson_args' from command line to '[]'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'ament_cmake_args' from command line to 'None'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'catkin_cmake_args' from command line to 'None'
+[0.604s] Level 5:colcon.colcon_core.verb:set package 'subsea_interfaces' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.604s] DEBUG:colcon.colcon_core.verb:Building package 'subsea_interfaces' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces', 'merge_install': False, 'meson_args': [], 'path': '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces', 'symlink_install': True, 'test_result_base': None}
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_args' from command line to 'None'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_target' from command line to 'None'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_clean_cache' from command line to 'False'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_clean_first' from command line to 'False'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'cmake_force_configure' from command line to 'False'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'meson_args' from command line to '[]'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'ament_cmake_args' from command line to 'None'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'catkin_cmake_args' from command line to 'None'
+[0.617s] Level 5:colcon.colcon_core.verb:set package 'subsea_capture' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.617s] DEBUG:colcon.colcon_core.verb:Building package 'subsea_capture' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture', 'merge_install': False, 'meson_args': [], 'path': '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_capture', 'symlink_install': True, 'test_result_base': None}
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_args' from command line to 'None'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_target' from command line to 'None'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_clean_cache' from command line to 'False'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_clean_first' from command line to 'False'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'cmake_force_configure' from command line to 'False'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'meson_args' from command line to '[]'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'ament_cmake_args' from command line to 'None'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'catkin_cmake_args' from command line to 'None'
+[0.632s] Level 5:colcon.colcon_core.verb:set package 'subsea_ui' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.632s] DEBUG:colcon.colcon_core.verb:Building package 'subsea_ui' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui', 'merge_install': False, 'meson_args': [], 'path': '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_ui', 'symlink_install': True, 'test_result_base': None}
+[0.633s] INFO:colcon.colcon_core.executor:Executing jobs using 'parallel' executor
+[0.634s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete
+[0.634s] INFO:colcon.colcon_ros.task.catkin.build:Building ROS package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces' with build type 'catkin'
+[0.635s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces'
+[0.640s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_core.shell.bat': Not used on non-Windows systems
+[0.641s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.641s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.647s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/cam_touch_ui' with build type 'ament_python'
+[0.647s] Level 1:colcon.colcon_core.shell:create_environment_hook('cam_touch_ui', 'ament_prefix_path')
+[0.647s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/ament_prefix_path.ps1'
+[0.649s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/ament_prefix_path.dsv'
+[0.651s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/ament_prefix_path.sh'
+[0.653s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.653s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.663s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_bringup' with build type 'ament_python'
+[0.663s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_bringup', 'ament_prefix_path')
+[0.663s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/ament_prefix_path.ps1'
+[0.665s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/ament_prefix_path.dsv'
+[0.666s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/ament_prefix_path.sh'
+[0.667s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.667s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.679s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCATKIN_SYMLINK_INSTALL=ON -DCMAKE_INSTALL_PREFIX=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces
+[1.121s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/cam_touch_ui'
+[1.121s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[1.121s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[1.628s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_bringup'
+[1.629s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[1.629s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[2.865s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/build --no-deps symlink_data
+[2.878s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/build --no-deps symlink_data
+[4.288s] Level 1:colcon.colcon_core.shell:create_environment_hook('cam_touch_ui', 'pythonpath_develop')
+[4.290s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/share/cam_touch_ui/hook/pythonpath_develop.ps1'
+[4.289s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/build --no-deps symlink_data
+[4.291s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/share/cam_touch_ui/hook/pythonpath_develop.dsv'
+[4.292s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/cam_touch_ui/share/cam_touch_ui/hook/pythonpath_develop.sh'
+[4.306s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui' for CMake module files
+[4.307s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui' for CMake config files
+[4.308s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/lib'
+[4.309s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/bin'
+[4.309s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/lib/pkgconfig/cam_touch_ui.pc'
+[4.310s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/lib/python3.12/site-packages'
+[4.311s] Level 1:colcon.colcon_core.shell:create_environment_hook('cam_touch_ui', 'pythonpath')
+[4.312s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/pythonpath.ps1'
+[4.313s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/pythonpath.dsv'
+[4.314s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/hook/pythonpath.sh'
+[4.316s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/bin'
+[4.316s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(cam_touch_ui)
+[4.317s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/package.ps1'
+[4.319s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/package.dsv'
+[4.320s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/package.sh'
+[4.321s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/package.bash'
+[4.322s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/cam_touch_ui/package.zsh'
+[4.323s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/subseascanning/trajectory-calculation-3d-scanner/install/cam_touch_ui/share/colcon-core/packages/cam_touch_ui)
+[4.373s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_bringup', 'pythonpath_develop')
+[4.373s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.ps1'
+[4.374s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/build --no-deps symlink_data
+[4.375s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.dsv'
+[4.375s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.sh'
+[4.376s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup' for CMake module files
+[4.376s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup' for CMake config files
+[4.377s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib'
+[4.377s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/bin'
+[4.377s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/pkgconfig/subsea_bringup.pc'
+[4.378s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/lib/python3.12/site-packages'
+[4.378s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_bringup', 'pythonpath')
+[4.379s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/pythonpath.ps1'
+[4.380s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/pythonpath.dsv'
+[4.380s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/hook/pythonpath.sh'
+[4.381s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/bin'
+[4.381s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(subsea_bringup)
+[4.382s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/package.ps1'
+[4.384s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/package.dsv'
+[4.388s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/package.sh'
+[4.390s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/package.bash'
+[4.391s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/subsea_bringup/package.zsh'
+[4.392s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_bringup/share/colcon-core/packages/subsea_bringup)
+[6.911s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCATKIN_SYMLINK_INSTALL=ON -DCMAKE_INSTALL_PREFIX=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces
+[6.917s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces -- -j4 -l4
+[13.164s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces -- -j4 -l4
+[13.187s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces
+[13.407s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'ros_package_path')
+[13.408s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ros_package_path.ps1'
+[13.408s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces
+[13.409s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ros_package_path.dsv'
+[13.411s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ros_package_path.sh'
+[13.412s] Level 1:colcon.colcon_ros.task.catkin:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages'
+[13.412s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'catkin_pythonpath')
+[13.414s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/catkin_pythonpath.ps1'
+[13.416s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/catkin_pythonpath.dsv'
+[13.418s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/catkin_pythonpath.sh'
+[13.419s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'pkg_config_path')
+[13.420s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path.ps1'
+[13.420s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path.dsv'
+[13.421s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path.sh'
+[13.424s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'pkg_config_path_multiarch')
+[13.424s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path_multiarch.ps1'
+[13.425s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path_multiarch.dsv'
+[13.425s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pkg_config_path_multiarch.sh'
+[13.427s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(subsea_interfaces)
+[13.428s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces' for CMake module files
+[13.429s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces' for CMake config files
+[13.429s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'cmake_prefix_path')
+[13.430s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/cmake_prefix_path.ps1'
+[13.431s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/cmake_prefix_path.dsv'
+[13.431s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/cmake_prefix_path.sh'
+[13.432s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib'
+[13.432s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'ld_library_path_lib')
+[13.433s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ld_library_path_lib.ps1'
+[13.433s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ld_library_path_lib.dsv'
+[13.435s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/ld_library_path_lib.sh'
+[13.435s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/bin'
+[13.435s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig/subsea_interfaces.pc'
+[13.436s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages'
+[13.436s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_interfaces', 'pythonpath')
+[13.436s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pythonpath.ps1'
+[13.437s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pythonpath.dsv'
+[13.437s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/hook/pythonpath.sh'
+[13.438s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/bin'
+[13.438s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.ps1'
+[13.439s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.dsv'
+[13.440s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.sh'
+[13.441s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.bash'
+[13.441s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.zsh'
+[13.441s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/colcon-core/packages/subsea_interfaces)
+[13.442s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_capture' with build type 'ament_python'
+[13.442s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_capture', 'ament_prefix_path')
+[13.442s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/ament_prefix_path.ps1'
+[13.443s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/ament_prefix_path.dsv'
+[13.444s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/ament_prefix_path.sh'
+[13.445s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[13.445s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[13.822s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_capture'
+[13.823s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[13.823s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[14.759s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture': CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/build --no-deps symlink_data
+[15.821s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_capture', 'pythonpath_develop')
+[15.821s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/share/subsea_capture/hook/pythonpath_develop.ps1'
+[15.822s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture' returned '0': CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/build --no-deps symlink_data
+[15.822s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/share/subsea_capture/hook/pythonpath_develop.dsv'
+[15.823s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/share/subsea_capture/hook/pythonpath_develop.sh'
+[15.824s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture' for CMake module files
+[15.824s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture' for CMake config files
+[15.825s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib'
+[15.825s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/bin'
+[15.825s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/pkgconfig/subsea_capture.pc'
+[15.825s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages'
+[15.825s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_capture', 'pythonpath')
+[15.826s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/pythonpath.ps1'
+[15.826s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/pythonpath.dsv'
+[15.826s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/hook/pythonpath.sh'
+[15.827s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/bin'
+[15.827s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(subsea_capture)
+[15.828s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/package.ps1'
+[15.828s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/package.dsv'
+[15.829s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/package.sh'
+[15.829s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/package.bash'
+[15.830s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture/package.zsh'
+[15.830s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/colcon-core/packages/subsea_capture)
+[15.831s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_ui' with build type 'ament_python'
+[15.831s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_ui', 'ament_prefix_path')
+[15.831s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/ament_prefix_path.ps1'
+[15.833s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/ament_prefix_path.dsv'
+[15.834s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/ament_prefix_path.sh'
+[15.835s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[15.835s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[16.218s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_ui'
+[16.218s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[16.218s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[17.197s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui': AMENT_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/build --no-deps symlink_data
+[18.244s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_ui', 'pythonpath_develop')
+[18.244s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/share/subsea_ui/hook/pythonpath_develop.ps1'
+[18.245s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui' returned '0': AMENT_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/build --no-deps symlink_data
+[18.245s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/share/subsea_ui/hook/pythonpath_develop.dsv'
+[18.247s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_ui/share/subsea_ui/hook/pythonpath_develop.sh'
+[18.248s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui' for CMake module files
+[18.249s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui' for CMake config files
+[18.251s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib'
+[18.251s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/bin'
+[18.251s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/pkgconfig/subsea_ui.pc'
+[18.252s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/lib/python3.12/site-packages'
+[18.252s] Level 1:colcon.colcon_core.shell:create_environment_hook('subsea_ui', 'pythonpath')
+[18.252s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/pythonpath.ps1'
+[18.253s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/pythonpath.dsv'
+[18.254s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/hook/pythonpath.sh'
+[18.255s] Level 1:colcon.colcon_core.environment:checking '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/bin'
+[18.255s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(subsea_ui)
+[18.255s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/package.ps1'
+[18.256s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/package.dsv'
+[18.257s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/package.sh'
+[18.257s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/package.bash'
+[18.258s] INFO:colcon.colcon_core.shell:Creating package script '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/subsea_ui/package.zsh'
+[18.259s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_ui/share/colcon-core/packages/subsea_ui)
+[18.259s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:closing loop
+[18.260s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:loop closed
+[18.261s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete finished with '0'
+[18.261s] DEBUG:colcon.colcon_core.event_reactor:joining thread
+[18.270s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.terminal_notifier': Not used on non-Darwin systems
+[18.270s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.win32': Not used on non-Windows systems
+[18.270s] INFO:colcon.colcon_notification.desktop_notification:Sending desktop notification using 'notify2'
+[18.302s] DEBUG:colcon.colcon_core.event_reactor:joined thread
+[18.302s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/subseascanning/trajectory-calculation-3d-scanner/install/local_setup.ps1'
+[18.305s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/subseascanning/trajectory-calculation-3d-scanner/install/_local_setup_util_ps1.py'
+[18.307s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/subseascanning/trajectory-calculation-3d-scanner/install/setup.ps1'
+[18.309s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/subseascanning/trajectory-calculation-3d-scanner/install/local_setup.sh'
+[18.309s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/subseascanning/trajectory-calculation-3d-scanner/install/_local_setup_util_sh.py'
+[18.310s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/subseascanning/trajectory-calculation-3d-scanner/install/setup.sh'
+[18.312s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/subseascanning/trajectory-calculation-3d-scanner/install/local_setup.bash'
+[18.313s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/subseascanning/trajectory-calculation-3d-scanner/install/setup.bash'
+[18.315s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/subseascanning/trajectory-calculation-3d-scanner/install/local_setup.zsh'
+[18.315s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/subseascanning/trajectory-calculation-3d-scanner/install/setup.zsh'

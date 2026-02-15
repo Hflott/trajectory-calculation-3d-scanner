@@ -1,0 +1,2 @@
+[console_scripts]
+capture_service = subsea_capture.capture_service:main

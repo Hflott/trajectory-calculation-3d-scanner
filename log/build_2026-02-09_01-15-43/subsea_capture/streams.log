@@ -1,0 +1,24 @@
+[1.316s] Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture': CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/build --no-deps symlink_data
+[1.797s] running develop
+[2.105s] running egg_info
+[2.106s] creating subsea_capture.egg-info
+[2.140s] writing subsea_capture.egg-info/PKG-INFO
+[2.140s] writing dependency_links to subsea_capture.egg-info/dependency_links.txt
+[2.140s] writing entry points to subsea_capture.egg-info/entry_points.txt
+[2.141s] writing requirements to subsea_capture.egg-info/requires.txt
+[2.141s] writing top-level names to subsea_capture.egg-info/top_level.txt
+[2.142s] writing manifest file 'subsea_capture.egg-info/SOURCES.txt'
+[2.219s] reading manifest file 'subsea_capture.egg-info/SOURCES.txt'
+[2.220s] writing manifest file 'subsea_capture.egg-info/SOURCES.txt'
+[2.256s] running build_ext
+[2.256s] Creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages/subsea-capture.egg-link (link to .)
+[2.261s] Installing capture_service script to /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/subsea_capture
+[2.261s] 
+[2.261s] Installed /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture
+[2.261s] running symlink_data
+[2.261s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index
+[2.262s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index
+[2.262s] creating /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index/packages
+[2.262s] symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/resource/subsea_capture -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/ament_index/resource_index/packages
+[2.262s] symbolically linking /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/package.xml -> /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/share/subsea_capture
+[2.378s] Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture' returned '0': CMAKE_PREFIX_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces:${CMAKE_PREFIX_PATH} DEBUGINFOD_URLS=https://debuginfod.ubuntu.com LD_LIBRARY_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib:${LD_LIBRARY_PATH} PKG_CONFIG_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/aarch64-linux-gnu/pkgconfig:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/pkgconfig:${PKG_CONFIG_PATH} PYTHONPATH=/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_capture/lib/python3.12/site-packages:/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages:${PYTHONPATH} ROS_PACKAGE_PATH=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share:${ROS_PACKAGE_PATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_capture/build --no-deps symlink_data

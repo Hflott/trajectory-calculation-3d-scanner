@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "subsea_interfaces__py",
+		"source" : "/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces/subsea_interfaces__py"
+	}
+}

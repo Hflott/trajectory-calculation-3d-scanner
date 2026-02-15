@@ -1,0 +1,239 @@
+[0.044s] Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCATKIN_SYMLINK_INSTALL=ON -DCMAKE_INSTALL_PREFIX=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces
+[0.497s] -- The C compiler identification is GNU 13.3.0
+[0.497s] -- The CXX compiler identification is GNU 13.3.0
+[0.497s] -- Detecting C compiler ABI info
+[0.538s] -- Detecting C compiler ABI info - done
+[0.553s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.554s] -- Detecting C compile features
+[0.555s] -- Detecting C compile features - done
+[0.597s] -- Detecting CXX compiler ABI info
+[0.820s] -- Detecting CXX compiler ABI info - done
+[0.854s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.854s] -- Detecting CXX compile features
+[0.854s] -- Detecting CXX compile features - done
+[0.855s] -- Found ament_cmake: 2.5.5 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[1.191s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[1.427s] -- Found rosidl_default_generators: 1.6.0 (/opt/ros/jazzy/share/rosidl_default_generators/cmake)
+[1.438s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.542s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.630s] -- Found rosidl_adapter: 4.6.7 (/opt/ros/jazzy/share/rosidl_adapter/cmake)
+[1.637s] -- Found builtin_interfaces: 2.0.3 (/opt/ros/jazzy/share/builtin_interfaces/cmake)
+[2.982s] -- Found ament_cmake_ros: 0.12.0 (/opt/ros/jazzy/share/ament_cmake_ros/cmake)
+[4.076s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[5.059s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[5.063s] -- Found python_cmake_module: 0.11.1 (/opt/ros/jazzy/share/python_cmake_module/cmake)
+[5.312s] -- Found PythonExtra: /usr/bin/python3  
+[6.087s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter Development NumPy Development.Module Development.Embed 
+[6.168s] -- Configuring done (6.1s)
+[6.229s] -- Generating done (0.0s)
+[6.235s] [33mCMake Warning:
+[6.236s]   Manually-specified variables were not used by the project:
+[6.236s] 
+[6.237s]     CATKIN_INSTALL_INTO_PREFIX_ROOT
+[6.237s]     CATKIN_SYMLINK_INSTALL
+[6.237s] 
+[6.237s] [0m
+[6.262s] -- Build files have been written to: /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces
+[6.276s] Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces -DCATKIN_INSTALL_INTO_PREFIX_ROOT=0 -DCATKIN_SYMLINK_INSTALL=ON -DCMAKE_INSTALL_PREFIX=/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces
+[6.282s] Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces -- -j4 -l4
+[6.389s] [  2%] [34m[1mGenerating type hashes for ROS interfaces[0m
+[6.410s] [  2%] Built target ament_cmake_python_copy_subsea_interfaces
+[6.756s] [  2%] Built target subsea_interfaces__rosidl_generator_type_description
+[6.779s] [  5%] [34m[1mGenerating C code for ROS interfaces[0m
+[6.806s] [  8%] [34m[1mGenerating C++ code for ROS interfaces[0m
+[6.835s] running egg_info
+[6.835s] creating subsea_interfaces.egg-info
+[6.897s] writing subsea_interfaces.egg-info/PKG-INFO
+[6.913s] writing dependency_links to subsea_interfaces.egg-info/dependency_links.txt
+[6.913s] writing top-level names to subsea_interfaces.egg-info/top_level.txt
+[6.913s] writing manifest file 'subsea_interfaces.egg-info/SOURCES.txt'
+[7.040s] reading manifest file 'subsea_interfaces.egg-info/SOURCES.txt'
+[7.040s] writing manifest file 'subsea_interfaces.egg-info/SOURCES.txt'
+[7.144s] [  8%] Built target ament_cmake_python_build_subsea_interfaces_egg
+[7.406s] [  8%] Built target subsea_interfaces__cpp
+[7.490s] [ 11%] [32mBuilding C object CMakeFiles/subsea_interfaces__rosidl_generator_c.dir/rosidl_generator_c/subsea_interfaces/srv/detail/capture_pair__description.c.o[0m
+[7.495s] [ 14%] [32mBuilding C object CMakeFiles/subsea_interfaces__rosidl_generator_c.dir/rosidl_generator_c/subsea_interfaces/srv/detail/capture_pair__functions.c.o[0m
+[7.503s] [ 17%] [32mBuilding C object CMakeFiles/subsea_interfaces__rosidl_generator_c.dir/rosidl_generator_c/subsea_interfaces/srv/detail/capture_pair__type_support.c.o[0m
+[7.667s] [ 20%] [32m[1mLinking C shared library libsubsea_interfaces__rosidl_generator_c.so[0m
+[7.743s] [ 20%] Built target subsea_interfaces__rosidl_generator_c
+[7.777s] [ 23%] [34m[1mGenerating C++ type support dispatch for ROS interfaces[0m
+[7.785s] [ 26%] [34m[1mGenerating C++ type support for eProsima Fast-RTPS[0m
+[7.789s] [ 32%] [34m[1mGenerating C++ introspection for ROS interfaces[0m
+[7.789s] [ 32%] [34m[1mGenerating C type support for eProsima Fast-RTPS[0m
+[8.337s] [ 35%] [32mBuilding CXX object CMakeFiles/subsea_interfaces__rosidl_typesupport_cpp.dir/rosidl_typesupport_cpp/subsea_interfaces/srv/capture_pair__type_support.cpp.o[0m
+[8.421s] [ 38%] [32mBuilding CXX object CMakeFiles/subsea_interfaces__rosidl_typesupport_introspection_cpp.dir/rosidl_typesupport_introspection_cpp/subsea_interfaces/srv/detail/capture_pair__type_support.cpp.o[0m
+[8.477s] [ 41%] [32mBuilding CXX object CMakeFiles/subsea_interfaces__rosidl_typesupport_fastrtps_cpp.dir/rosidl_typesupport_fastrtps_cpp/subsea_interfaces/srv/detail/dds_fastrtps/capture_pair__type_support.cpp.o[0m
+[8.603s] [ 44%] [32mBuilding CXX object CMakeFiles/subsea_interfaces__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/subsea_interfaces/srv/detail/capture_pair__type_support_c.cpp.o[0m
+[9.434s] [ 47%] [32m[1mLinking CXX shared library libsubsea_interfaces__rosidl_typesupport_cpp.so[0m
+[9.712s] [ 50%] [32m[1mLinking CXX shared library libsubsea_interfaces__rosidl_typesupport_introspection_cpp.so[0m
+[9.767s] [ 50%] Built target subsea_interfaces__rosidl_typesupport_cpp
+[9.844s] [ 52%] [34m[1mGenerating C introspection for ROS interfaces[0m
+[10.037s] [ 52%] Built target subsea_interfaces__rosidl_typesupport_introspection_cpp
+[10.057s] [ 55%] [32m[1mLinking CXX shared library libsubsea_interfaces__rosidl_typesupport_fastrtps_c.so[0m
+[10.087s] [ 58%] [34m[1mGenerating C type support dispatch for ROS interfaces[0m
+[10.333s] [ 58%] Built target subsea_interfaces__rosidl_typesupport_fastrtps_c
+[10.467s] [ 61%] [32m[1mLinking CXX shared library libsubsea_interfaces__rosidl_typesupport_fastrtps_cpp.so[0m
+[10.640s] [ 64%] [32mBuilding C object CMakeFiles/subsea_interfaces__rosidl_typesupport_introspection_c.dir/rosidl_typesupport_introspection_c/subsea_interfaces/srv/detail/capture_pair__type_support.c.o[0m
+[10.726s] [ 64%] Built target subsea_interfaces__rosidl_typesupport_fastrtps_cpp
+[10.737s] [ 67%] [32mBuilding CXX object CMakeFiles/subsea_interfaces__rosidl_typesupport_c.dir/rosidl_typesupport_c/subsea_interfaces/srv/capture_pair__type_support.cpp.o[0m
+[10.786s] [ 70%] [32m[1mLinking C shared library libsubsea_interfaces__rosidl_typesupport_introspection_c.so[0m
+[10.848s] [ 73%] [32m[1mLinking CXX shared library libsubsea_interfaces__rosidl_typesupport_c.so[0m
+[10.859s] [ 73%] Built target subsea_interfaces__rosidl_typesupport_introspection_c
+[10.955s] [ 73%] Built target subsea_interfaces__rosidl_typesupport_c
+[11.006s] [ 73%] Built target subsea_interfaces
+[11.049s] [ 76%] [34m[1mGenerating Python code for ROS interfaces[0m
+[11.666s] [ 76%] Built target subsea_interfaces__py
+[11.717s] [ 79%] [32mBuilding C object CMakeFiles/subsea_interfaces__rosidl_generator_py.dir/rosidl_generator_py/subsea_interfaces/srv/_capture_pair_s.c.o[0m
+[11.986s] [ 82%] [32m[1mLinking C shared library libsubsea_interfaces__rosidl_generator_py.so[0m
+[12.076s] [ 82%] Built target subsea_interfaces__rosidl_generator_py
+[12.130s] [ 85%] [32mBuilding C object CMakeFiles/subsea_interfaces_s__rosidl_typesupport_c.dir/rosidl_generator_py/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_c.c.o[0m
+[12.131s] [ 88%] [32mBuilding C object CMakeFiles/subsea_interfaces_s__rosidl_typesupport_fastrtps_c.dir/rosidl_generator_py/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_fastrtps_c.c.o[0m
+[12.150s] [ 91%] [32mBuilding C object CMakeFiles/subsea_interfaces_s__rosidl_typesupport_introspection_c.dir/rosidl_generator_py/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_introspection_c.c.o[0m
+[12.379s] [ 94%] [32m[1mLinking C shared module rosidl_generator_py/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_introspection_c.so[0m
+[12.390s] [ 97%] [32m[1mLinking C shared module rosidl_generator_py/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_fastrtps_c.so[0m
+[12.401s] [100%] [32m[1mLinking C shared module rosidl_generator_py/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_c.so[0m
+[12.473s] [100%] Built target subsea_interfaces_s__rosidl_typesupport_introspection_c
+[12.482s] [100%] Built target subsea_interfaces_s__rosidl_typesupport_fastrtps_c
+[12.493s] [100%] Built target subsea_interfaces_s__rosidl_typesupport_c
+[12.529s] Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces -- -j4 -l4
+[12.552s] Invoking command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces
+[12.566s] -- Install configuration: ""
+[12.567s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/ament_index/resource_index/rosidl_interfaces/subsea_interfaces
+[12.567s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/srv/CapturePair.json
+[12.569s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.569s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.570s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/capture_pair.h
+[12.570s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.570s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__type_support.h
+[12.571s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__struct.h
+[12.571s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__functions.h
+[12.571s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__functions.c
+[12.571s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__type_support.c
+[12.574s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__description.c
+[12.574s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg
+[12.574s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg/rosidl_generator_c__visibility_control.h
+[12.574s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/library_path.sh
+[12.575s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/library_path.dsv
+[12.576s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_generator_c.so
+[12.576s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_generator_c.so" to ""
+[12.577s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.577s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.577s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.577s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__rosidl_typesupport_fastrtps_c.h
+[12.577s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg
+[12.577s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg/rosidl_typesupport_fastrtps_c__visibility_control.h
+[12.577s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_fastrtps_c.so
+[12.578s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_fastrtps_c.so" to ""
+[12.578s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.578s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.579s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.579s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__type_support.c
+[12.579s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__rosidl_typesupport_introspection_c.h
+[12.579s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg
+[12.579s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg/rosidl_typesupport_introspection_c__visibility_control.h
+[12.580s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_introspection_c.so
+[12.580s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_introspection_c.so" to ""
+[12.580s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_c.so
+[12.581s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_c.so" to ""
+[12.581s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.584s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.585s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/capture_pair.hpp
+[12.585s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.585s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__traits.hpp
+[12.585s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__builder.hpp
+[12.585s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__struct.hpp
+[12.585s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__type_support.hpp
+[12.585s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg
+[12.586s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg/rosidl_generator_cpp__visibility_control.hpp
+[12.586s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.586s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.586s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.586s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/dds_fastrtps
+[12.587s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__rosidl_typesupport_fastrtps_cpp.hpp
+[12.587s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg
+[12.587s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/msg/rosidl_typesupport_fastrtps_cpp__visibility_control.h
+[12.587s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_fastrtps_cpp.so
+[12.588s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_fastrtps_cpp.so" to ""
+[12.588s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces
+[12.588s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv
+[12.588s] -- Up-to-date: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail
+[12.591s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__rosidl_typesupport_introspection_cpp.hpp
+[12.598s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/include/subsea_interfaces/subsea_interfaces/srv/detail/capture_pair__type_support.cpp
+[12.598s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_introspection_cpp.so
+[12.599s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_introspection_cpp.so" to ""
+[12.599s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_cpp.so
+[12.599s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_typesupport_cpp.so" to ""
+[12.599s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/pythonpath.sh
+[12.599s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/pythonpath.dsv
+[12.599s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces-0.0.1-py3.12.egg-info
+[12.599s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces-0.0.1-py3.12.egg-info/dependency_links.txt
+[12.602s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces-0.0.1-py3.12.egg-info/top_level.txt
+[12.605s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces-0.0.1-py3.12.egg-info/SOURCES.txt
+[12.605s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces-0.0.1-py3.12.egg-info/PKG-INFO
+[12.606s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces
+[12.606s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_fastrtps_c.c
+[12.606s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv
+[12.606s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv/_capture_pair_s.c
+[12.607s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv/__init__.py
+[12.607s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv/_capture_pair.py
+[12.609s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_introspection_c.so
+[12.609s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_c.so
+[12.609s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_fastrtps_c.so
+[12.610s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/__init__.py
+[12.610s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_c.c
+[12.610s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/_subsea_interfaces_s.ep.rosidl_typesupport_introspection_c.c
+[12.699s] Listing '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces'...
+[12.700s] Compiling '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/__init__.py'...
+[12.701s] Listing '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv'...
+[12.701s] Compiling '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv/__init__.py'...
+[12.702s] Compiling '/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/srv/_capture_pair.py'...
+[12.723s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_fastrtps_c.so
+[12.723s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_fastrtps_c.so" to ""
+[12.723s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_introspection_c.so
+[12.724s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_introspection_c.so" to ""
+[12.724s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_c.so
+[12.725s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/python3.12/site-packages/subsea_interfaces/subsea_interfaces_s__rosidl_typesupport_c.so" to ""
+[12.725s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_generator_py.so
+[12.726s] -- Set non-toolchain portion of runtime path of "/home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/lib/libsubsea_interfaces__rosidl_generator_py.so" to ""
+[12.726s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/srv/CapturePair.idl
+[12.726s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/srv/CapturePair.srv
+[12.726s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/ament_index/resource_index/package_run_dependencies/subsea_interfaces
+[12.727s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/ament_index/resource_index/parent_prefix_path/subsea_interfaces
+[12.727s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/ament_prefix_path.sh
+[12.727s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/ament_prefix_path.dsv
+[12.727s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/path.sh
+[12.728s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/environment/path.dsv
+[12.728s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/local_setup.bash
+[12.728s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/local_setup.sh
+[12.728s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/local_setup.zsh
+[12.730s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/local_setup.dsv
+[12.730s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.dsv
+[12.730s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/ament_index/resource_index/packages/subsea_interfaces
+[12.730s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_generator_cExport.cmake
+[12.730s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_generator_cExport-noconfig.cmake
+[12.731s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_typesupport_fastrtps_cExport.cmake
+[12.731s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_typesupport_fastrtps_cExport-noconfig.cmake
+[12.731s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_introspection_cExport.cmake
+[12.731s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_introspection_cExport-noconfig.cmake
+[12.732s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_cExport.cmake
+[12.732s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_cExport-noconfig.cmake
+[12.733s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_generator_cppExport.cmake
+[12.734s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_typesupport_fastrtps_cppExport.cmake
+[12.740s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_typesupport_fastrtps_cppExport-noconfig.cmake
+[12.740s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_introspection_cppExport.cmake
+[12.742s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_introspection_cppExport-noconfig.cmake
+[12.743s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_cppExport.cmake
+[12.746s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfaces__rosidl_typesupport_cppExport-noconfig.cmake
+[12.747s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_generator_pyExport.cmake
+[12.749s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/export_subsea_interfaces__rosidl_generator_pyExport-noconfig.cmake
+[12.752s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/rosidl_cmake-extras.cmake
+[12.762s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/ament_cmake_export_dependencies-extras.cmake
+[12.762s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/ament_cmake_export_include_directories-extras.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/ament_cmake_export_libraries-extras.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/ament_cmake_export_targets-extras.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfacesConfig.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/cmake/subsea_interfacesConfig-version.cmake
+[12.763s] -- Installing: /home/subseascanning/trajectory-calculation-3d-scanner/install/subsea_interfaces/share/subsea_interfaces/package.xml
+[12.773s] Invoked command in '/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces' returned '0': DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces

@@ -1,0 +1,11 @@
+{
+  "package_name": "subsea_interfaces",
+  "output_dir": "/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces/rosidl_generator_type_description/subsea_interfaces",
+  "idl_tuples": [
+    "/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces/rosidl_adapter/subsea_interfaces:srv/CapturePair.idl"
+  ],
+  "include_paths": [
+    "builtin_interfaces:/opt/ros/jazzy/share/builtin_interfaces",
+    "service_msgs:/opt/ros/jazzy/share/service_msgs"
+  ]
+}

@@ -1,0 +1,28 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from subsea_interfaces/srv/CapturePair.srv
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+
+module subsea_interfaces {
+  module srv {
+    struct CapturePair_Request {
+      string session_id;
+
+      string output_dir;
+
+      int32 jpeg_quality;
+    };
+    struct CapturePair_Response {
+      boolean success;
+
+      string message;
+
+      string cam0_path;
+
+      string cam1_path;
+
+      builtin_interfaces::msg::Time stamp;
+    };
+  };
+};

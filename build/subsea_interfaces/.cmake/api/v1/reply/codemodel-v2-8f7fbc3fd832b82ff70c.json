@@ -1,0 +1,242 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-fc5e1f70893c8f6ac3ce.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.20"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18
+					]
+				},
+				{
+					"build" : "subsea_interfaces__py",
+					"jsonFile" : "directory-subsea_interfaces__py-a173eedf291a11ebe663.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.20"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces/subsea_interfaces__py",
+					"targetIndexes" : 
+					[
+						4
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0,
+						1
+					],
+					"name" : "subsea_interfaces",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17,
+						18
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_subsea_interfaces_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_subsea_interfaces_egg-4e068b34969bc6241bbf.json",
+					"name" : "ament_cmake_python_build_subsea_interfaces_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_copy_subsea_interfaces::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_copy_subsea_interfaces-1bd473b0ba82620712bc.json",
+					"name" : "ament_cmake_python_copy_subsea_interfaces",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces-c8311165e690810b4034.json",
+					"name" : "subsea_interfaces",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__cpp-9711d881c659692a5c63.json",
+					"name" : "subsea_interfaces__cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "subsea_interfaces__py::@a6fedc9b6cb1e201fa9a",
+					"jsonFile" : "target-subsea_interfaces__py-f2536dcdda84b45e8cc6.json",
+					"name" : "subsea_interfaces__py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_generator_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_generator_c-8892be324791fffbbeda.json",
+					"name" : "subsea_interfaces__rosidl_generator_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_generator_py::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_generator_py-c27816c447115d21534b.json",
+					"name" : "subsea_interfaces__rosidl_generator_py",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_generator_type_description::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_generator_type_description-49fc911ff904e37b72ba.json",
+					"name" : "subsea_interfaces__rosidl_generator_type_description",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_c-afd38e8d3911bc252828.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_cpp-cdeb33b506ac260f184e.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_fastrtps_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_fastrtps_c-1800c75b542fae8fdff8.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_fastrtps_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_fastrtps_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_fastrtps_cpp-c9351a54aba83f5eca3b.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_fastrtps_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_introspection_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_introspection_c-843b5da30d9251fa149c.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_introspection_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces__rosidl_typesupport_introspection_cpp::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces__rosidl_typesupport_introspection_cpp-74ee20fed3558b05fe78.json",
+					"name" : "subsea_interfaces__rosidl_typesupport_introspection_cpp",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces_s__rosidl_typesupport_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces_s__rosidl_typesupport_c-0670ad2d5b9ea355a829.json",
+					"name" : "subsea_interfaces_s__rosidl_typesupport_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces_s__rosidl_typesupport_fastrtps_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces_s__rosidl_typesupport_fastrtps_c-4fdb918592306409970b.json",
+					"name" : "subsea_interfaces_s__rosidl_typesupport_fastrtps_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces_s__rosidl_typesupport_introspection_c::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces_s__rosidl_typesupport_introspection_c-95e59c3058d397f85418.json",
+					"name" : "subsea_interfaces_s__rosidl_typesupport_introspection_c",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "subsea_interfaces_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-subsea_interfaces_uninstall-52e163480f8216cd91d4.json",
+					"name" : "subsea_interfaces_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-5dec5cef3f6c5cb90b7f.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/subseascanning/trajectory-calculation-3d-scanner/build/subsea_interfaces",
+		"source" : "/home/subseascanning/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_interfaces"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

@@ -1,0 +1,12 @@
+package.xml
+setup.cfg
+setup.py
+resource/subsea_bringup
+subsea_bringup/__init__.py
+subsea_bringup/rover_app.launch.py
+subsea_bringup.egg-info/PKG-INFO
+subsea_bringup.egg-info/SOURCES.txt
+subsea_bringup.egg-info/dependency_links.txt
+subsea_bringup.egg-info/requires.txt
+subsea_bringup.egg-info/top_level.txt
+subsea_bringup.egg-info/zip-safe

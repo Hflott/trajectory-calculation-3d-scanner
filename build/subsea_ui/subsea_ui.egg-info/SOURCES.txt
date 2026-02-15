@@ -1,0 +1,13 @@
+package.xml
+setup.cfg
+setup.py
+resource/subsea_ui
+subsea_ui/theme.py
+subsea_ui/ui.py
+subsea_ui.egg-info/PKG-INFO
+subsea_ui.egg-info/SOURCES.txt
+subsea_ui.egg-info/dependency_links.txt
+subsea_ui.egg-info/entry_points.txt
+subsea_ui.egg-info/requires.txt
+subsea_ui.egg-info/top_level.txt
+subsea_ui.egg-info/zip-safe

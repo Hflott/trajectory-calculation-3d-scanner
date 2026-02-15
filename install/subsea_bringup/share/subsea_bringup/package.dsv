@@ -1,0 +1,9 @@
+source;share/subsea_bringup/hook/pythonpath.ps1
+source;share/subsea_bringup/hook/pythonpath.dsv
+source;share/subsea_bringup/hook/pythonpath.sh
+source;share/subsea_bringup/hook/ament_prefix_path.ps1
+source;share/subsea_bringup/hook/ament_prefix_path.dsv
+source;share/subsea_bringup/hook/ament_prefix_path.sh
+source;../../build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.ps1
+source;../../build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.dsv
+source;../../build/subsea_bringup/share/subsea_bringup/hook/pythonpath_develop.sh

@@ -16,8 +16,13 @@ from qtpy.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayo
 
 import rclpy
 from rclpy.node import Node
-from rclpy.executors import SingleThreadedExecutor
-from rclpy.qos import qos_profile_sensor_data  # <-- FIX: required import
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import (
+    QoSProfile,
+    ReliabilityPolicy,
+    DurabilityPolicy,
+    HistoryPolicy,
+)
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
@@ -27,17 +32,34 @@ from .theme import apply_dark_theme
 from .theme import apply_dark_theme
 
 
-def cv_to_qpixmap(bgr: np.ndarray) -> QPixmap:
-    # Keep this cheap: no extra copies besides cvtColor
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    h, w, ch = rgb.shape
-    bytes_per_line = ch * w
-    qimg = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+def frame_to_qpixmap(frame: np.ndarray, encoding: str) -> QPixmap:
+    """Convert an HxWx3 uint8 frame to QPixmap with minimal work.
+
+    Avoid cv2.cvtColor when possible by using Qt's RGB/BGR888 support.
+    """
+    if frame is None:
+        return QPixmap()
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        return QPixmap()
+    if not frame.flags["C_CONTIGUOUS"]:
+        frame = np.ascontiguousarray(frame)
+
+    if encoding == "rgb8":
+        fmt = QImage.Format_RGB888
+    elif hasattr(QImage, "Format_BGR888"):
+        fmt = QImage.Format_BGR888
+    else:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        fmt = QImage.Format_RGB888
+
+    h, w, _ = frame.shape
+    qimg = QImage(frame.data, w, h, frame.strides[0], fmt)
     return QPixmap.fromImage(qimg)
 
 
 def start_camera_ros(namespace: str, camera_index: int, width: int, height: int, fps: int) -> subprocess.Popen:
     # Do NOT force format: improves dual-camera stability.
+    frame_us = int(1_000_000 / max(1, int(fps)))
     cmd = (
         "bash -lc '"
         "set -e; "
@@ -46,7 +68,8 @@ def start_camera_ros(namespace: str, camera_index: int, width: int, height: int,
         "exec ros2 run camera_ros camera_node --ros-args "
         f"-r __ns:={namespace} "
         f"-p camera:={camera_index} "
-        f"-p width:={width} -p height:={height} -p fps:={fps}"
+        f"-p width:={width} -p height:={height} "
+        f"-p FrameDurationLimits:=[{frame_us},{frame_us}]"
         "'"
     )
     return subprocess.Popen(cmd, shell=True, preexec_fn=os.setsid)
@@ -83,26 +106,51 @@ class CamSubscriber(Node):
         self.bridge = CvBridge()
         self.lock = threading.Lock()
         self.latest: Optional[np.ndarray] = None
+        self._latest_encoding: str = "bgr8"
+        self._latest_msg: Optional[Image] = None  # keep msg alive for zero-copy views
         self._last_rx_mono: Optional[float] = None
         self._ema_fps: float = 0.0
 
+        qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
         self.sub = self.create_subscription(
             Image,
             topic,
             self.cb_raw,
-            qos_profile_sensor_data,  # <-- low-latency QoS (best effort, small queue)
+            qos,
         )
         self.get_logger().info(f"Subscribing (raw) to: {topic}")
 
     def cb_raw(self, msg: Image) -> None:
-        try:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception as e:
-            self.get_logger().warn(f"raw decode failed: {e}")
-            return
+        frame = None
+        enc = (msg.encoding or "").lower()
+        if enc in ("bgr8", "rgb8") and msg.step == msg.width * 3:
+            try:
+                mv = memoryview(msg.data)
+                frame = np.ndarray(
+                    (msg.height, msg.width, 3),
+                    dtype=np.uint8,
+                    buffer=mv,
+                )
+            except Exception:
+                frame = None
+
+        if frame is None:
+            try:
+                frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+                enc = "bgr8"
+            except Exception:
+                return
+
         now_m = time.monotonic()
         with self.lock:
             self.latest = frame
+            self._latest_encoding = enc if enc in ("bgr8", "rgb8") else "bgr8"
+            self._latest_msg = msg
             if self._last_rx_mono is not None:
                 dt = max(1e-6, now_m - self._last_rx_mono)
                 fps = 1.0 / dt
@@ -113,6 +161,10 @@ class CamSubscriber(Node):
         # <-- FIX: no frame.copy() (huge CPU/mem win). We only read in UI thread.
         with self.lock:
             return self.latest
+
+    def latest_encoding(self) -> str:
+        with self.lock:
+            return self._latest_encoding
 
     def stats(self) -> Tuple[float, float]:
         """Returns (age_s, fps_ema)."""
@@ -220,7 +272,7 @@ class MainWindow(QWidget):
             label.setText(f"{name}: waiting…")
             return
 
-        pix = cv_to_qpixmap(frame)
+        pix = frame_to_qpixmap(frame, src.latest_encoding())
 
         # <-- FIX: FastTransformation avoids expensive filtering every frame
         label.setPixmap(
@@ -253,38 +305,23 @@ def main() -> int:
     cam0 = CamSubscriber("cam0_sub", CAM0_TOPIC)
     cam1 = CamSubscriber("cam1_sub", CAM1_TOPIC)
 
-    executor = SingleThreadedExecutor()
-    executor.add_node(cam0)
-    executor.add_node(cam1)
-
     app = QApplication(qt_argv)
     apply_dark_theme(app)
 
-    # Integrate ROS spinning into the Qt event loop (avoids non-QThread warnings)
-    spin_timer = QTimer()
-    spin_timer.setInterval(10)  # ms
-
-    def _spin_ros_once():
-        try:
-            executor.spin_once(timeout_sec=0.0)
-        except Exception:
-            try:
-                spin_timer.stop()
-            except Exception:
-                pass
-
-    spin_timer.timeout.connect(_spin_ros_once)
-    spin_timer.start()
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(cam0)
+    executor.add_node(cam1)
+    spin_thread = threading.Thread(target=executor.spin, daemon=True)
+    spin_thread.start()
     w = MainWindow(cam0, cam1)
     w.showFullScreen()
     ret = app.exec()
 
+    executor.shutdown()
     try:
-        spin_timer.stop()
+        spin_thread.join(timeout=1.0)
     except Exception:
         pass
-
-    executor.shutdown()
     cam0.destroy_node()
     cam1.destroy_node()
     rclpy.try_shutdown()

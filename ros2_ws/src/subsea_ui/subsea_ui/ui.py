@@ -37,9 +37,14 @@ from qtpy.QtWidgets import (
 )
 
 import rclpy
-from rclpy.executors import SingleThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import (
+    QoSProfile,
+    ReliabilityPolicy,
+    DurabilityPolicy,
+    HistoryPolicy,
+)
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
@@ -49,14 +54,31 @@ from subsea_interfaces.srv import CapturePair
 from .theme import apply_dark_theme
 
 
-def cv_to_pix(bgr: np.ndarray) -> QPixmap:
-    if bgr is None:
+def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
+    """Convert an HxWx3 uint8 frame to QPixmap with minimal work.
+
+    Key point: avoid per-frame cv2.cvtColor when possible.
+    Qt supports both RGB888 and BGR888 formats.
+    """
+    if frame is None:
         return QPixmap()
-    if not bgr.flags["C_CONTIGUOUS"]:
-        bgr = np.ascontiguousarray(bgr)
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    h, w, ch = rgb.shape
-    qimg = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        return QPixmap()
+    if not frame.flags["C_CONTIGUOUS"]:
+        frame = np.ascontiguousarray(frame)
+
+    # Note: QImage.Format_BGR888 exists in Qt >= 5.14 (Qt6 included).
+    # If missing, fall back to RGB conversion.
+    if encoding == "rgb8":
+        fmt = QImage.Format_RGB888
+    elif hasattr(QImage, "Format_BGR888"):
+        fmt = QImage.Format_BGR888
+    else:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        fmt = QImage.Format_RGB888
+
+    h, w, _ = frame.shape
+    qimg = QImage(frame.data, w, h, frame.strides[0], fmt)
     return QPixmap.fromImage(qimg)
 
 
@@ -68,7 +90,7 @@ def load_jpeg_as_pix(path: str) -> Optional[QPixmap]:
     bgr = cv2.imread(path, cv2.IMREAD_REDUCED_COLOR_4)
     if bgr is None:
         return None
-    return cv_to_pix(bgr)
+    return frame_to_pix(bgr, "bgr8")
 
 
 def _ts() -> str:
@@ -115,20 +137,49 @@ class ImageSub(Node):
         self.bridge = CvBridge()
         self._lock = threading.Lock()
         self._latest: Optional[np.ndarray] = None
+        self._latest_encoding: str = "bgr8"
+        self._latest_msg: Optional[Image] = None  # keep msg alive for zero-copy views
         self._got_first = False
         self._last_rx_mono: Optional[float] = None
         self._ema_fps: float = 0.0
-        self.sub = self.create_subscription(Image, topic, self.cb, qos_profile_sensor_data)
+
+        # Depth=1 prevents queue buildup when UI/processing can't keep up.
+        qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self.sub = self.create_subscription(Image, topic, self.cb, qos)
         self.get_logger().info(f"Preview sub: {topic}")
 
     def cb(self, msg: Image):
-        try:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception:
-            return
+        # Fast path: avoid cv_bridge copy/convert when encoding is already usable.
+        frame = None
+        enc = (msg.encoding or "").lower()
+        if enc in ("bgr8", "rgb8") and msg.step == msg.width * 3:
+            try:
+                mv = memoryview(msg.data)
+                frame = np.ndarray(
+                    (msg.height, msg.width, 3),
+                    dtype=np.uint8,
+                    buffer=mv,
+                )
+            except Exception:
+                frame = None
+
+        if frame is None:
+            try:
+                # Fallback: convert to BGR for display.
+                frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+                enc = "bgr8"
+            except Exception:
+                return
         now_m = time.monotonic()
         with self._lock:
             self._latest = frame
+            self._latest_encoding = enc if enc in ("bgr8", "rgb8") else "bgr8"
+            self._latest_msg = msg  # ensure buffer stays valid for zero-copy view
             self._got_first = True
             if self._last_rx_mono is not None:
                 dt = max(1e-6, now_m - self._last_rx_mono)
@@ -145,6 +196,10 @@ class ImageSub(Node):
         # so returning the reference is safe and avoids a full-frame copy.
         with self._lock:
             return self._latest
+
+    def latest_encoding(self) -> str:
+        with self._lock:
+            return self._latest_encoding
 
     def stream_stats(self) -> Tuple[float, float]:
         """Returns (age_s, fps_ema). age_s is large if we have no frames yet."""
@@ -471,14 +526,17 @@ class MainWindow(QWidget):
         age_s, fps = sub.stream_stats()
         info.setText(f"{fps:4.1f} FPS   |   age {age_s*1000:4.0f} ms")
 
-        # Lower latency: scale in OpenCV before QImage conversion
-        # (keeps Python+Qt work bounded)
+        # Keep per-frame work minimal:
+        #  - avoid cvtColor via Qt's BGR888/RGB888
+        #  - resize only when needed
         target_w = max(2, label.width())
         target_h = max(2, label.height())
-        frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_AREA)
+        if frame.shape[1] != target_w or frame.shape[0] != target_h:
+            # INTER_LINEAR is a good speed/quality trade for preview.
+            frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
-        pix = cv_to_pix(frame)
-        label.setPixmap(pix)  # already sized; no Qt scaling here
+        pix = frame_to_pix(frame, sub.latest_encoding())
+        label.setPixmap(pix)
 
     def _update_indicators(self) -> None:
         def set_ind(ind: QLabel, ok: bool, warn: bool = False, paused: bool = False):
@@ -637,42 +695,28 @@ def main():
     cam0 = ImageSub("cam0_preview_sub", str(app_node.get_parameter("cam0_topic").value))
     cam1 = ImageSub("cam1_preview_sub", str(app_node.get_parameter("cam1_topic").value))
 
-    executor = SingleThreadedExecutor()
-    executor.add_node(app_node)
-    executor.add_node(cam0)
-    executor.add_node(cam1)
-
     app = QApplication(qt_argv)
     apply_dark_theme(app)
 
-    # Integrate ROS spinning into the Qt event loop (avoids non-QThread warnings)
-    spin_timer = QTimer()
-    spin_timer.setInterval(10)  # ms; keeps CPU reasonable on a Pi
-
-    def _spin_ros_once():
-        try:
-            executor.spin_once(timeout_sec=0.0)
-        except Exception:
-            # During shutdown, spin_once may throw; stop the timer to avoid log spam.
-            try:
-                spin_timer.stop()
-            except Exception:
-                pass
-
-    spin_timer.timeout.connect(_spin_ros_once)
-    spin_timer.start()
+    # Spin ROS in a background thread.
+    # This keeps camera callbacks off the Qt UI thread, improving FPS stability.
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(app_node)
+    executor.add_node(cam0)
+    executor.add_node(cam1)
+    spin_thread = threading.Thread(target=executor.spin, daemon=True)
+    spin_thread.start()
 
     w = MainWindow(app_node, cam0, cam1)
     w.setWindowState(w.windowState() | Qt.WindowFullScreen)
     w.show()
     ret = app.exec()
 
+    executor.shutdown()
     try:
-        spin_timer.stop()
+        spin_thread.join(timeout=1.0)
     except Exception:
         pass
-
-    executor.shutdown()
     app_node.destroy_node()
     cam0.destroy_node()
     cam1.destroy_node()

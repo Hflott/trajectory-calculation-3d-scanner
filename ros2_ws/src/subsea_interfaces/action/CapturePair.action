@@ -1,0 +1,11 @@
+string session_id
+string output_dir
+int32 jpeg_quality
+---
+bool success
+string message
+string cam0_path
+string cam1_path
+builtin_interfaces/Time stamp
+---
+string stage

@@ -3,15 +3,18 @@ import os
 import time
 import subprocess
 import signal
+import threading
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Callable
 
 import rclpy
+from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.node import Node
 from builtin_interfaces.msg import Time as TimeMsg
 
 from ament_index_python.packages import get_package_prefix
 
+from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
 
 
@@ -132,12 +135,22 @@ class CaptureService(Node):
         self._p1: Optional[subprocess.Popen] = None
         self._p0_params = "/tmp/subsea_cam0_preview_params.yaml"
         self._p1_params = "/tmp/subsea_cam1_preview_params.yaml"
+        self._capture_lock = threading.Lock()
 
         self._devs = _dev_paths()
-        self._camera_node_exe = _camera_ros_exe_path()
+        self._camera_node_exe: Optional[str] = None
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
+        self.action = ActionServer(
+            self,
+            CapturePairAction,
+            "capture_pair",
+            execute_callback=self.on_capture_action,
+            goal_callback=self.on_capture_goal,
+            cancel_callback=self.on_capture_cancel,
+        )
         self.get_logger().info("Capture service ready: /capture_pair")
+        self.get_logger().info("Capture action ready: /capture_pair")
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
             self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
@@ -161,6 +174,8 @@ class CaptureService(Node):
         }
 
     def _start_preview_proc(self, cam_index: int, ns: str, node_name: str, params_path: str, frame_id: str) -> subprocess.Popen:
+        if self._camera_node_exe is None:
+            self._camera_node_exe = _camera_ros_exe_path()
         _write_params_file(params_path, self._preview_params(cam_index, frame_id))
 
         cmd = [
@@ -240,26 +255,36 @@ class CaptureService(Node):
             return True, ""
         return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n"
 
-    def on_capture(self, req: CapturePair.Request, res: CapturePair.Response) -> CapturePair.Response:
+    def _perform_capture(
+        self,
+        session_in: str,
+        out_dir_in: str,
+        quality_in: int,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, str, str, str, TimeMsg]:
         cam0 = int(self.get_parameter("cam0_index").value)
         cam1 = int(self.get_parameter("cam1_index").value)
         default_quality = int(self.get_parameter("default_quality").value)
-        quality = int(req.jpeg_quality) if req.jpeg_quality > 0 else default_quality
+        quality = int(quality_in) if quality_in > 0 else default_quality
 
-        out_dir = req.output_dir.strip() or os.path.expanduser("~/captures")
+        out_dir = out_dir_in.strip() if out_dir_in else ""
+        out_dir = out_dir or os.path.expanduser("~/captures")
         os.makedirs(out_dir, exist_ok=True)
 
-        session = req.session_id.strip() or datetime.now().strftime("%Y%m%d_%H%M%S")
+        session = session_in.strip() if session_in else ""
+        session = session or datetime.now().strftime("%Y%m%d_%H%M%S")
         cam0_path = os.path.join(out_dir, f"{session}_cam0.jpg")
         cam1_path = os.path.join(out_dir, f"{session}_cam1.jpg")
 
-        res.stamp = now_ros_time(self)
+        stamp = now_ros_time(self)
         self.get_logger().info(f"Capture session={session} -> {cam0_path}, {cam1_path}")
 
         pause_previews = bool(self.get_parameter("pause_previews").value)
         manage_previews = bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value)
 
         if pause_previews and manage_previews:
+            if feedback_cb is not None:
+                feedback_cb("pausing_previews")
             self.get_logger().info("Pausing previews...")
             self._stop_previews_managed()
 
@@ -279,6 +304,8 @@ class CaptureService(Node):
 
         try:
             for attempt in range(retries + 1):
+                if feedback_cb is not None:
+                    feedback_cb(f"capturing_attempt_{attempt+1}")
                 if parallel:
                     # Run both still captures in parallel (faster pause window)
                     p0 = subprocess.Popen(self._rpicam_cmd(cam0, cam0_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -311,6 +338,8 @@ class CaptureService(Node):
 
         finally:
             if pause_previews and manage_previews:
+                if feedback_cb is not None:
+                    feedback_cb("resuming_previews")
                 self.get_logger().info("Resuming previews...")
                 try:
                     self._start_previews()
@@ -318,23 +347,70 @@ class CaptureService(Node):
                     self.get_logger().error(f"Failed to restart previews: {e}")
 
         if not ok0 or not ok1:
-            res.success = False
-            res.cam0_path = cam0_path if os.path.exists(cam0_path) else ""
-            res.cam1_path = cam1_path if os.path.exists(cam1_path) else ""
-            res.message = (
+            fail_cam0 = cam0_path if os.path.exists(cam0_path) else ""
+            fail_cam1 = cam1_path if os.path.exists(cam1_path) else ""
+            fail_msg = (
                 "CAPTURE FAILED\n"
-                f"cam0_ok={ok0} path={res.cam0_path}\n{d0}\n"
-                f"cam1_ok={ok1} path={res.cam1_path}\n{d1}\n"
+                f"cam0_ok={ok0} path={fail_cam0}\n{d0}\n"
+                f"cam1_ok={ok1} path={fail_cam1}\n{d1}\n"
             )
-            self.get_logger().error(res.message)
-            return res
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, fail_cam0, fail_cam1, stamp
 
-        res.success = True
-        res.message = "OK"
+        self.get_logger().info("Capture OK")
+        return True, "OK", cam0_path, cam1_path, stamp
+
+    def on_capture(self, req: CapturePair.Request, res: CapturePair.Response) -> CapturePair.Response:
+        with self._capture_lock:
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+                req.session_id,
+                req.output_dir,
+                int(req.jpeg_quality),
+            )
+        res.success = success
+        res.message = message
         res.cam0_path = cam0_path
         res.cam1_path = cam1_path
-        self.get_logger().info("Capture OK")
+        res.stamp = stamp
         return res
+
+    def on_capture_goal(self, goal_request: CapturePairAction.Goal) -> GoalResponse:
+        del goal_request
+        return GoalResponse.ACCEPT
+
+    def on_capture_cancel(self, goal_handle) -> CancelResponse:
+        del goal_handle
+        # Capture is not safely cancelable once camera handover starts.
+        return CancelResponse.REJECT
+
+    def on_capture_action(self, goal_handle) -> CapturePairAction.Result:
+        goal = goal_handle.request
+
+        def feedback(stage: str) -> None:
+            fb = CapturePairAction.Feedback()
+            fb.stage = stage
+            goal_handle.publish_feedback(fb)
+
+        with self._capture_lock:
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+                goal.session_id,
+                goal.output_dir,
+                int(goal.jpeg_quality),
+                feedback_cb=feedback,
+            )
+
+        result = CapturePairAction.Result()
+        result.success = success
+        result.message = message
+        result.cam0_path = cam0_path
+        result.cam1_path = cam1_path
+        result.stamp = stamp
+
+        if success:
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+        return result
 
 
 def main():

@@ -7,6 +7,7 @@ find_package(builtin_interfaces REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/CapturePair.srv"
+  "action/CapturePair.action"
   DEPENDENCIES builtin_interfaces
 )
 

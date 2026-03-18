@@ -19,6 +19,7 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from action_msgs.msg import GoalStatus
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QImage, QPixmap
 from qtpy.QtWidgets import (
@@ -37,28 +38,32 @@ from qtpy.QtWidgets import (
 )
 
 import rclpy
+from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.parameter import Parameter
+from rclpy.parameter_client import AsyncParameterClient
 from rclpy.qos import (
     QoSProfile,
     ReliabilityPolicy,
     DurabilityPolicy,
     HistoryPolicy,
 )
+from rclpy.task import Future
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
+from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
 
 from .theme import apply_dark_theme
 
 
 def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
-    """Convert an HxWx3 uint8 frame to QPixmap with minimal work.
+    """Convert an HxWx3 uint8 frame to QPixmap.
 
-    Key point: avoid per-frame cv2.cvtColor when possible.
-    Qt supports both RGB888 and BGR888 formats.
+    Prefer explicit RGB conversion for better compatibility with XQuartz/X11.
     """
     if frame is None:
         return QPixmap()
@@ -67,12 +72,8 @@ def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
     if not frame.flags["C_CONTIGUOUS"]:
         frame = np.ascontiguousarray(frame)
 
-    # Note: QImage.Format_BGR888 exists in Qt >= 5.14 (Qt6 included).
-    # If missing, fall back to RGB conversion.
     if encoding == "rgb8":
         fmt = QImage.Format_RGB888
-    elif hasattr(QImage, "Format_BGR888"):
-        fmt = QImage.Format_BGR888
     else:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         fmt = QImage.Format_RGB888
@@ -197,6 +198,12 @@ class ImageSub(Node):
         with self._lock:
             return self._latest
 
+    def get_latest_snapshot(self) -> Tuple[Optional[np.ndarray], str, Optional[Image]]:
+        # Return frame + encoding + backing message reference in one lock scope.
+        # Keeping msg_ref alive in the caller prevents buffer invalidation while rendering.
+        with self._lock:
+            return self._latest, self._latest_encoding, self._latest_msg
+
     def latest_encoding(self) -> str:
         with self._lock:
             return self._latest_encoding
@@ -220,21 +227,107 @@ class AppNode(Node):
         self.declare_parameter("cam0_topic", cfg.get("cam0_topic", "/cam0/camera/image_raw"))
         self.declare_parameter("cam1_topic", cfg.get("cam1_topic", "/cam1/camera/image_raw"))
         self.declare_parameter("capture_service", cfg.get("capture_service", "capture_pair"))
+        self.declare_parameter("capture_action", cfg.get("capture_action", "capture_pair"))
+        self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
+        self.declare_parameter("mock_camera_node", cfg.get("mock_camera_node", "/mock_camera_publisher"))
         self.declare_parameter("output_dir", cfg.get("output_dir", os.path.expanduser("~/captures")))
         self.declare_parameter("jpeg_quality", int(cfg.get("jpeg_quality", 95)))
         self.declare_parameter("ui_fps", int(cfg.get("ui_fps", 15)))
 
         self.cli = self.create_client(CapturePair, str(self.get_parameter("capture_service").value))
+        self.action_cli = ActionClient(self, CapturePairAction, str(self.get_parameter("capture_action").value))
+        self._prefer_action = bool(self.get_parameter("prefer_capture_action").value)
+        self._mock_cam_params = AsyncParameterClient(
+            self,
+            str(self.get_parameter("mock_camera_node").value),
+        )
 
     def capture_pair_async(self, session_id: str, out_dir: str, quality: int = 95):
+        if self._prefer_action and self.action_cli.server_is_ready():
+            return self._capture_pair_action_async(session_id, out_dir, quality)
         req = CapturePair.Request()
         req.session_id = session_id
         req.output_dir = out_dir
         req.jpeg_quality = quality
         return self.cli.call_async(req)
 
+    def _capture_pair_action_async(self, session_id: str, out_dir: str, quality: int = 95):
+        result_future = Future()
+        goal = CapturePairAction.Goal()
+        goal.session_id = session_id
+        goal.output_dir = out_dir
+        goal.jpeg_quality = quality
+
+        send_goal_future = self.action_cli.send_goal_async(goal)
+
+        def on_goal_done(fut):
+            try:
+                goal_handle = fut.result()
+            except Exception as e:
+                result_future.set_exception(e)
+                return
+
+            if goal_handle is None or not goal_handle.accepted:
+                if self.cli.service_is_ready():
+                    req = CapturePair.Request()
+                    req.session_id = session_id
+                    req.output_dir = out_dir
+                    req.jpeg_quality = quality
+                    service_fut = self.cli.call_async(req)
+
+                    def on_service_done(sf):
+                        try:
+                            result_future.set_result(sf.result())
+                        except Exception as e:
+                            result_future.set_exception(e)
+
+                    service_fut.add_done_callback(on_service_done)
+                    return
+                result_future.set_exception(RuntimeError("Capture action goal rejected"))
+                return
+
+            get_result_future = goal_handle.get_result_async()
+
+            def on_result_done(rf):
+                try:
+                    action_result = rf.result()
+                except Exception as e:
+                    result_future.set_exception(e)
+                    return
+
+                resp = CapturePair.Response()
+                if action_result is None:
+                    resp.success = False
+                    resp.message = "No action result returned"
+                    result_future.set_result(resp)
+                    return
+
+                res = action_result.result
+                resp.success = bool(res.success) and (action_result.status == GoalStatus.STATUS_SUCCEEDED)
+                resp.message = str(res.message)
+                resp.cam0_path = str(res.cam0_path)
+                resp.cam1_path = str(res.cam1_path)
+                resp.stamp = res.stamp
+                result_future.set_result(resp)
+
+            get_result_future.add_done_callback(on_result_done)
+
+        send_goal_future.add_done_callback(on_goal_done)
+        return result_future
+
     def service_ready(self) -> bool:
-        return self.cli.service_is_ready()
+        return self.action_cli.server_is_ready() or self.cli.service_is_ready()
+
+    def set_mock_camera_fps_async(self, fps: int):
+        # Best-effort: if no mock node is present, caller should continue silently.
+        try:
+            ready = self._mock_cam_params.services_are_ready()
+        except Exception:
+            ready = False
+        if not ready:
+            return None
+        params = [Parameter("fps", Parameter.Type.INTEGER, int(max(1, fps)))]
+        return self._mock_cam_params.set_parameters(params)
 
 
 class MainWindow(QWidget):
@@ -307,6 +400,7 @@ class MainWindow(QWidget):
         # pipelines (to give libcamera exclusive access for rpicam-still). Keep the
         # last frame on-screen instead of flashing "no signal".
         self._preview_paused: bool = False
+        self._ind_state = {"cam0": None, "cam1": None, "srv": None}
 
         # User-settable values (persisted)
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
@@ -469,21 +563,27 @@ class MainWindow(QWidget):
         self._capture_poll = QTimer(self)
         self._capture_poll.timeout.connect(self._poll_capture_future)
 
-        QTimer.singleShot(0, self._force_fullscreen_geometry)
+        QTimer.singleShot(0, self._set_default_window_geometry)
         self._log(f"UI started. cam0_topic={self.cam0.topic} cam1_topic={self.cam1.topic}")
 
-    def _force_fullscreen_geometry(self):
+    def _set_default_window_geometry(self):
         scr = QApplication.primaryScreen()
-        if scr:
-            geo = scr.availableGeometry()  # availableGeometry avoids taskbar/odd offsets
-            self.setGeometry(geo)
+        if not scr:
+            return
+        geo = scr.availableGeometry()
+        w = max(900, int(geo.width() * 0.85))
+        h = max(600, int(geo.height() * 0.85))
+        w = min(w, geo.width())
+        h = min(h, geo.height())
+        x = geo.x() + max(0, (geo.width() - w) // 2)
+        y = geo.y() + max(0, (geo.height() - h) // 2)
+        self.setGeometry(x, y, w, h)
 
     def toggle_fullscreen(self):
         if self.windowState() & Qt.WindowFullScreen:
             self.setWindowState(self.windowState() & ~Qt.WindowFullScreen)
         else:
             self.setWindowState(self.windowState() | Qt.WindowFullScreen)
-        QTimer.singleShot(0, self._force_fullscreen_geometry)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -517,7 +617,7 @@ class MainWindow(QWidget):
             info.setText("—")
             return
 
-        frame = sub.get_latest()
+        frame, enc, msg_ref = sub.get_latest_snapshot()
         if frame is None:
             label.setText(f"{name}: waiting…")
             info.setText("—")
@@ -535,26 +635,34 @@ class MainWindow(QWidget):
             # INTER_LINEAR is a good speed/quality trade for preview.
             frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
 
-        pix = frame_to_pix(frame, sub.latest_encoding())
+        pix = frame_to_pix(frame, enc)
+        _ = msg_ref  # keep backing ROS message alive until pixmap conversion is done
         label.setPixmap(pix)
 
     def _update_indicators(self) -> None:
-        def set_ind(ind: QLabel, ok: bool, warn: bool = False, paused: bool = False):
+        def set_ind(key: str, ind: QLabel, ok: bool, warn: bool = False, paused: bool = False):
             if paused:
-                ind.setStyleSheet("color:#74A8FF; font-weight:700;")
+                state = "paused"
+                style = "color:#74A8FF; font-weight:700;"
             elif ok:
-                ind.setStyleSheet("color:#52D273; font-weight:700;")
+                state = "ok"
+                style = "color:#52D273; font-weight:700;"
             elif warn:
-                ind.setStyleSheet("color:#F3C969; font-weight:700;")
+                state = "warn"
+                style = "color:#F3C969; font-weight:700;"
             else:
-                ind.setStyleSheet("color:#FF6B6B; font-weight:700;")
+                state = "bad"
+                style = "color:#FF6B6B; font-weight:700;"
+            if self._ind_state[key] != state:
+                ind.setStyleSheet(style)
+                self._ind_state[key] = state
 
         age0, _ = self.cam0.stream_stats()
         age1, _ = self.cam1.stream_stats()
         paused = self._preview_paused
-        set_ind(self.ind_cam0, ok=self.cam0.got_first_frame() and age0 < 0.7, warn=self.cam0.got_first_frame(), paused=paused)
-        set_ind(self.ind_cam1, ok=self.cam1.got_first_frame() and age1 < 0.7, warn=self.cam1.got_first_frame(), paused=paused)
-        set_ind(self.ind_srv, ok=self.ros_node.service_ready(), warn=False)
+        set_ind("cam0", self.ind_cam0, ok=self.cam0.got_first_frame() and age0 < 0.7, warn=self.cam0.got_first_frame(), paused=paused)
+        set_ind("cam1", self.ind_cam1, ok=self.cam1.got_first_frame() and age1 < 0.7, warn=self.cam1.got_first_frame(), paused=paused)
+        set_ind("srv", self.ind_srv, ok=self.ros_node.service_ready(), warn=False)
 
         # Gate capture button on service readiness
         self.capture_btn.setEnabled(self.ros_node.service_ready() and self._capture_future is None)
@@ -672,6 +780,17 @@ class MainWindow(QWidget):
 
         # Apply UI FPS immediately
         self.timer.setInterval(max(10, int(1000 / self.ui_fps)))
+        # Also update mock publisher FPS when running in desktop simulation.
+        fut = self.ros_node.set_mock_camera_fps_async(self.ui_fps)
+        if fut is not None:
+            def _done(f):
+                try:
+                    r = f.result()
+                    if r and bool(r[0].successful):
+                        self._log(f"Mock camera fps updated to {self.ui_fps}")
+                except Exception:
+                    self._log("Mock camera fps update failed")
+            fut.add_done_callback(_done)
 
     def _log(self, msg: str) -> None:
         line = f"[{_ts()}] {msg}"
@@ -708,7 +827,8 @@ def main():
     spin_thread.start()
 
     w = MainWindow(app_node, cam0, cam1)
-    w.setWindowState(w.windowState() | Qt.WindowFullScreen)
+    if os.environ.get("SUBSEA_UI_FULLSCREEN", "0") == "1":
+        w.setWindowState(w.windowState() | Qt.WindowFullScreen)
     w.show()
     ret = app.exec()
 

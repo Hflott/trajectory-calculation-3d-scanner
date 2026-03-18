@@ -1,0 +1,41 @@
+{
+  "name": "trajectory-calculation-3d-scanner",
+  "image": "osrf/ros:jazzy-desktop",
+  "workspaceFolder": "/workspaces/trajectory-calculation-3d-scanner",
+  "forwardPorts": [6080, 5901],
+  "portsAttributes": {
+    "6080": {
+      "label": "noVNC GUI",
+      "onAutoForward": "openBrowser"
+    },
+    "5901": {
+      "label": "VNC"
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind,consistency=cached"
+  ],
+  "containerEnv": {
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+    "OPENAI_ORG_ID": "${localEnv:OPENAI_ORG_ID}",
+    "HTTP_PROXY": "${localEnv:HTTP_PROXY}",
+    "HTTPS_PROXY": "${localEnv:HTTPS_PROXY}",
+    "NO_PROXY": "${localEnv:NO_PROXY}",
+    "DISPLAY": ":1",
+    "QT_X11_NO_MITSHM": "1",
+    "QT_OPENGL": "software",
+    "QT_XCB_GL_INTEGRATION": "none",
+    "LIBGL_ALWAYS_SOFTWARE": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-iot.vscode-ros",
+        "ms-python.python",
+        "openai.chatgpt"
+      ]
+    }
+  },
+  "postCreateCommand": "apt-get update && apt-get install -y python3-opencv python3-pip python3-qtpy python3-pyqt5 ca-certificates curl xvfb x11vnc fluxbox novnc && rosdep update && bash -lc \"grep -qxF 'source /opt/ros/jazzy/setup.bash' /root/.bashrc || echo 'source /opt/ros/jazzy/setup.bash' >> /root/.bashrc\"",
+  "remoteUser": "root"
+}

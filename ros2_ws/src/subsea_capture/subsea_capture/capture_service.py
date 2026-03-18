@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import time
 import subprocess
 import signal
@@ -16,6 +17,8 @@ from ament_index_python.packages import get_package_prefix
 
 from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
+from sensor_msgs.msg import Image
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 
 def now_ros_time(node: Node) -> TimeMsg:
@@ -91,6 +94,37 @@ def _devices_in_use(devs: List[str]) -> bool:
     return False
 
 
+def _libcamera_camera_count() -> Optional[int]:
+    # Returns number of cameras if libcamera CLI is available, else None.
+    cmds = (
+        ["libcamera-hello", "--list-cameras"],
+        ["rpicam-hello", "--list-cameras"],
+    )
+    for cmd in cmds:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        out = (p.stdout or "") + "\n" + (p.stderr or "")
+        m = re.search(r"Available cameras:\s*(\d+)", out)
+        if m:
+            try:
+                return int(m.group(1))
+            except Exception:
+                return None
+    return None
+
+
+def _has_camera_device_hint(devs: List[str]) -> bool:
+    # Heuristic fallback if libcamera CLI isn't available.
+    for p in devs:
+        if p.startswith("/dev/video") or p.startswith("/dev/media"):
+            return True
+    return False
+
+
 class CaptureService(Node):
     def __init__(self):
         super().__init__("capture_service")
@@ -109,6 +143,8 @@ class CaptureService(Node):
         self.declare_parameter("manage_previews", False)
         self.declare_parameter("start_previews", True)
         self.declare_parameter("pause_previews", True)
+        self.declare_parameter("auto_detect_cameras", True)
+        self.declare_parameter("fallback_black_previews", True)
 
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
@@ -139,6 +175,12 @@ class CaptureService(Node):
 
         self._devs = _dev_paths()
         self._camera_node_exe: Optional[str] = None
+        self._fallback_pub0 = None
+        self._fallback_pub1 = None
+        self._fallback_timer = None
+        self._fallback_w = 0
+        self._fallback_h = 0
+        self._fallback_data: Optional[bytes] = None
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
         self.action = ActionServer(
@@ -153,8 +195,115 @@ class CaptureService(Node):
         self.get_logger().info("Capture action ready: /capture_pair")
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
-            self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
-            self._start_previews()
+            auto_detect = bool(self.get_parameter("auto_detect_cameras").value)
+            fallback_black = bool(self.get_parameter("fallback_black_previews").value)
+            if auto_detect:
+                count = _libcamera_camera_count()
+                if count is None:
+                    if _has_camera_device_hint(self._devs):
+                        self.get_logger().warn(
+                            "Camera auto-detect unavailable; /dev/video* present. Trying previews anyway."
+                        )
+                        self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
+                        self._start_previews()
+                    else:
+                        self._handle_no_cameras(fallback_black)
+                elif count <= 0:
+                    self._handle_no_cameras(fallback_black)
+                else:
+                    self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
+                    self._start_previews()
+            else:
+                self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
+                self._start_previews()
+
+    def _handle_no_cameras(self, fallback_black: bool) -> None:
+        if fallback_black:
+            self.get_logger().warn("No cameras detected. Publishing black preview frames.")
+            self._start_black_previews()
+        else:
+            self.get_logger().warn("No cameras detected. Previews disabled.")
+
+    def _preview_topic(self, ns: str, node_name: str) -> str:
+        ns = (ns or "").strip()
+        node_name = (node_name or "").strip().strip("/")
+        if ns and not ns.startswith("/"):
+            ns = "/" + ns
+        ns = ns.rstrip("/")
+        if ns and node_name:
+            return f"{ns}/{node_name}/image_raw"
+        if ns:
+            return f"{ns}/image_raw"
+        if node_name:
+            return f"/{node_name}/image_raw"
+        return "/image_raw"
+
+    def _start_black_previews(self) -> None:
+        if self._fallback_timer is not None:
+            return
+        ns0 = str(self.get_parameter("cam0_namespace").value)
+        ns1 = str(self.get_parameter("cam1_namespace").value)
+        n0 = str(self.get_parameter("cam0_node_name").value)
+        n1 = str(self.get_parameter("cam1_node_name").value)
+        w = int(self.get_parameter("preview_width").value)
+        h = int(self.get_parameter("preview_height").value)
+        fps = max(1, int(self.get_parameter("preview_fps").value))
+
+        qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self._fallback_pub0 = self.create_publisher(Image, self._preview_topic(ns0, n0), qos)
+        self._fallback_pub1 = self.create_publisher(Image, self._preview_topic(ns1, n1), qos)
+        self._fallback_w = w
+        self._fallback_h = h
+        self._fallback_data = bytes(w * h * 3)
+
+        period = 1.0 / float(fps)
+        self._fallback_timer = self.create_timer(period, self._publish_black_previews)
+        self.get_logger().info(
+            f"Black preview publishers running: {self._preview_topic(ns0, n0)} | {self._preview_topic(ns1, n1)}"
+        )
+
+    def _stop_black_previews(self) -> None:
+        if self._fallback_timer is not None:
+            try:
+                self._fallback_timer.cancel()
+            except Exception:
+                pass
+        self._fallback_timer = None
+        self._fallback_pub0 = None
+        self._fallback_pub1 = None
+        self._fallback_data = None
+
+    def _publish_black_previews(self) -> None:
+        if self._fallback_pub0 is None or self._fallback_pub1 is None or self._fallback_data is None:
+            return
+        stamp = now_ros_time(self)
+        msg0 = Image()
+        msg0.header.stamp = stamp
+        msg0.header.frame_id = "cam0_optical_frame"
+        msg0.height = self._fallback_h
+        msg0.width = self._fallback_w
+        msg0.encoding = "bgr8"
+        msg0.is_bigendian = False
+        msg0.step = self._fallback_w * 3
+        msg0.data = self._fallback_data
+
+        msg1 = Image()
+        msg1.header.stamp = stamp
+        msg1.header.frame_id = "cam1_optical_frame"
+        msg1.height = self._fallback_h
+        msg1.width = self._fallback_w
+        msg1.encoding = "bgr8"
+        msg1.is_bigendian = False
+        msg1.step = self._fallback_w * 3
+        msg1.data = self._fallback_data
+
+        self._fallback_pub0.publish(msg0)
+        self._fallback_pub1.publish(msg1)
 
     def _preview_params(self, cam_index: int, frame_id: str) -> dict:
         w = int(self.get_parameter("preview_width").value)
@@ -189,6 +338,9 @@ class CaptureService(Node):
         return _popen_group(cmd, env=env)
 
     def _start_previews(self) -> None:
+        if self._fallback_timer is not None:
+            self.get_logger().info("Stopping black preview fallback (camera previews starting)")
+            self._stop_black_previews()
         cam0 = int(self.get_parameter("cam0_index").value)
         cam1 = int(self.get_parameter("cam1_index").value)
         ns0 = str(self.get_parameter("cam0_namespace").value)
@@ -425,6 +577,10 @@ def main():
         try:
             if bool(node.get_parameter("manage_previews").value):
                 node._stop_previews_managed()  # cleanup
+        except Exception:
+            pass
+        try:
+            node._stop_black_previews()
         except Exception:
             pass
         try:

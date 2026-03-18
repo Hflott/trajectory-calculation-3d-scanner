@@ -200,14 +200,18 @@ class CaptureService(Node):
             if auto_detect:
                 count = _libcamera_camera_count()
                 if count is None:
-                    if _has_camera_device_hint(self._devs):
+                    if fallback_black:
                         self.get_logger().warn(
-                            "Camera auto-detect unavailable; /dev/video* present. Trying previews anyway."
+                            "Camera auto-detect unavailable. Publishing black previews. "
+                            "Install libcamera-apps or set auto_detect_cameras:=false to force camera previews."
+                        )
+                        self._start_black_previews()
+                    else:
+                        self.get_logger().warn(
+                            "Camera auto-detect unavailable; starting previews anyway."
                         )
                         self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
                         self._start_previews()
-                    else:
-                        self._handle_no_cameras(fallback_black)
                 elif count <= 0:
                     self._handle_no_cameras(fallback_black)
                 else:
@@ -357,6 +361,23 @@ class CaptureService(Node):
             self.get_logger().info(f"cam1 preview started (pid={self._p1.pid})")
 
         self.get_logger().info("Preview camera nodes start sequence complete")
+        self._verify_previews_started()
+
+    def _verify_previews_started(self) -> None:
+        # Give camera_ros a moment to initialize; if it exits immediately,
+        # fall back to black previews to keep the UI stable.
+        time.sleep(0.6)
+        dead = []
+        for label, proc in (("cam0", self._p0), ("cam1", self._p1)):
+            if proc is not None and proc.poll() is not None:
+                dead.append(label)
+        if dead:
+            self.get_logger().warn(
+                f"Preview camera nodes exited early ({', '.join(dead)}). "
+                "Falling back to black previews."
+            )
+            self._stop_previews_managed()
+            self._start_black_previews()
 
     def _stop_previews_managed(self) -> None:
         timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)

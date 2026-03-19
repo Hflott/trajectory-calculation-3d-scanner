@@ -94,26 +94,53 @@ def _devices_in_use(devs: List[str]) -> bool:
     return False
 
 
+def _parse_camera_count(output: str) -> Optional[int]:
+    text = output or ""
+    if re.search(r"no cameras available", text, re.IGNORECASE):
+        return 0
+
+    m = re.search(r"Available cameras:\s*(\d+)", text)
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            return None
+
+    if "Available cameras:" in text:
+        lines = text.splitlines()
+        count = 0
+        start = False
+        for line in lines:
+            if not start:
+                if "Available cameras:" in line:
+                    start = True
+                continue
+            if re.match(r"^\s*\d+:", line):
+                count += 1
+        return count
+
+    return None
+
+
 def _libcamera_camera_count() -> Optional[int]:
-    # Returns number of cameras if libcamera CLI is available, else None.
+    # Returns number of cameras if a libcamera CLI is available, else None.
     cmds = (
+        ["cam", "-l"],
+        ["cam", "--list"],
         ["libcamera-hello", "--list-cameras"],
         ["rpicam-hello", "--list-cameras"],
     )
     for cmd in cmds:
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=3.0)
         except FileNotFoundError:
             continue
         except Exception:
             continue
         out = (p.stdout or "") + "\n" + (p.stderr or "")
-        m = re.search(r"Available cameras:\s*(\d+)", out)
-        if m:
-            try:
-                return int(m.group(1))
-            except Exception:
-                return None
+        count = _parse_camera_count(out)
+        if count is not None:
+            return count
     return None
 
 
@@ -181,6 +208,8 @@ class CaptureService(Node):
         self._fallback_w = 0
         self._fallback_h = 0
         self._fallback_data: Optional[bytes] = None
+        self._detected_cam_count: Optional[int] = None
+        self._expected_preview_cams: Optional[int] = None
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
         self.action = ActionServer(
@@ -199,6 +228,7 @@ class CaptureService(Node):
             fallback_black = bool(self.get_parameter("fallback_black_previews").value)
             if auto_detect:
                 count = _libcamera_camera_count()
+                self._detected_cam_count = count
                 if count is None:
                     if fallback_black:
                         self.get_logger().warn(
@@ -216,7 +246,7 @@ class CaptureService(Node):
                     self._handle_no_cameras(fallback_black)
                 else:
                     self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
-                    self._start_previews()
+                    self._start_previews(camera_count=count)
             else:
                 self.get_logger().info("manage_previews:=true -> starting preview camera nodes")
                 self._start_previews()
@@ -326,6 +356,31 @@ class CaptureService(Node):
             "frame_id": frame_id,
         }
 
+    def _preview_env(self) -> dict:
+        env = os.environ.copy()
+        local_libs = [
+            "/usr/local/lib/aarch64-linux-gnu",
+            "/usr/local/lib",
+            "/usr/local/lib64",
+        ]
+        existing = env.get("LD_LIBRARY_PATH", "")
+        parts = [p for p in existing.split(":") if p]
+        for p in local_libs:
+            if os.path.isdir(p) and p not in parts:
+                parts.insert(0, p)
+        if parts:
+            env["LD_LIBRARY_PATH"] = ":".join(parts)
+
+        ipa_path = None
+        for p in local_libs:
+            candidate = os.path.join(p, "libcamera", "ipa")
+            if os.path.isdir(candidate):
+                ipa_path = candidate
+                break
+        if ipa_path:
+            env.setdefault("LIBCAMERA_IPA_MODULE_PATH", ipa_path)
+        return env
+
     def _start_preview_proc(self, cam_index: int, ns: str, node_name: str, params_path: str, frame_id: str) -> subprocess.Popen:
         if self._camera_node_exe is None:
             self._camera_node_exe = _camera_ros_exe_path()
@@ -338,10 +393,10 @@ class CaptureService(Node):
             "-r", f"__ns:={ns}",
             "--params-file", params_path,
         ]
-        env = os.environ.copy()
+        env = self._preview_env()
         return _popen_group(cmd, env=env)
 
-    def _start_previews(self) -> None:
+    def _start_previews(self, camera_count: Optional[int] = None) -> None:
         if self._fallback_timer is not None:
             self.get_logger().info("Stopping black preview fallback (camera previews starting)")
             self._stop_black_previews()
@@ -352,13 +407,35 @@ class CaptureService(Node):
         n0 = str(self.get_parameter("cam0_node_name").value)
         n1 = str(self.get_parameter("cam1_node_name").value)
 
-        if self._p0 is None or self._p0.poll() is not None:
-            self._p0 = self._start_preview_proc(cam0, ns0, n0, self._p0_params, "cam0_optical_frame")
-            self.get_logger().info(f"cam0 preview started (pid={self._p0.pid})")
+        if camera_count is None:
+            camera_count = _libcamera_camera_count()
+        self._detected_cam_count = camera_count
 
-        if self._p1 is None or self._p1.poll() is not None:
-            self._p1 = self._start_preview_proc(cam1, ns1, n1, self._p1_params, "cam1_optical_frame")
-            self.get_logger().info(f"cam1 preview started (pid={self._p1.pid})")
+        if camera_count is not None and camera_count <= 0:
+            fallback_black = bool(self.get_parameter("fallback_black_previews").value)
+            self._handle_no_cameras(fallback_black)
+            return
+
+        expected = None if camera_count is None else max(0, min(2, camera_count))
+        self._expected_preview_cams = expected
+
+        if expected is None or expected >= 1:
+            if self._p0 is None or self._p0.poll() is not None:
+                self._p0 = self._start_preview_proc(cam0, ns0, n0, self._p0_params, "cam0_optical_frame")
+                self.get_logger().info(f"cam0 preview started (pid={self._p0.pid})")
+        else:
+            if self._p0 is not None:
+                _stop_proc(self._p0, timeout_s=float(self.get_parameter("preview_shutdown_timeout_s").value))
+                self._p0 = None
+
+        if expected is None or expected >= 2:
+            if self._p1 is None or self._p1.poll() is not None:
+                self._p1 = self._start_preview_proc(cam1, ns1, n1, self._p1_params, "cam1_optical_frame")
+                self.get_logger().info(f"cam1 preview started (pid={self._p1.pid})")
+        else:
+            if self._p1 is not None:
+                _stop_proc(self._p1, timeout_s=float(self.get_parameter("preview_shutdown_timeout_s").value))
+                self._p1 = None
 
         self.get_logger().info("Preview camera nodes start sequence complete")
         self._verify_previews_started()
@@ -367,10 +444,28 @@ class CaptureService(Node):
         # Give camera_ros a moment to initialize; if it exits immediately,
         # fall back to black previews to keep the UI stable.
         time.sleep(0.6)
+        p0_dead = (self._p0 is None) or (self._p0.poll() is not None)
+        p1_dead = (self._p1 is None) or (self._p1.poll() is not None)
+
+        if self._expected_preview_cams is None:
+            # Unknown camera count: only fall back if both previews failed.
+            if p0_dead and p1_dead:
+                self.get_logger().warn(
+                    "Preview camera nodes exited early. Falling back to black previews."
+                )
+                self._stop_previews_managed()
+                self._start_black_previews()
+            elif p0_dead or p1_dead:
+                self.get_logger().warn(
+                    "One preview camera node exited early. Continuing with remaining stream."
+                )
+            return
+
         dead = []
-        for label, proc in (("cam0", self._p0), ("cam1", self._p1)):
-            if proc is not None and proc.poll() is not None:
-                dead.append(label)
+        if self._expected_preview_cams >= 1 and p0_dead:
+            dead.append("cam0")
+        if self._expected_preview_cams >= 2 and p1_dead:
+            dead.append("cam1")
         if dead:
             self.get_logger().warn(
                 f"Preview camera nodes exited early ({', '.join(dead)}). "
@@ -419,7 +514,7 @@ class CaptureService(Node):
     def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str]:
         cmd = self._rpicam_cmd(cam_index, out_path, quality)
         try:
-            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=self._preview_env())
         except subprocess.TimeoutExpired:
             return False, f"TimeoutExpired running: {' '.join(cmd)}"
 
@@ -475,34 +570,48 @@ class CaptureService(Node):
         ok0 = ok1 = False
         d0 = d1 = ""
 
+        cam_count = _libcamera_camera_count()
+        self._detected_cam_count = cam_count
+        allow_cam1 = (cam_count is None) or (cam_count >= 2)
+
         try:
             for attempt in range(retries + 1):
                 if feedback_cb is not None:
                     feedback_cb(f"capturing_attempt_{attempt+1}")
                 if parallel:
                     # Run both still captures in parallel (faster pause window)
-                    p0 = subprocess.Popen(self._rpicam_cmd(cam0, cam0_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    p1 = subprocess.Popen(self._rpicam_cmd(cam1, cam1_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    p0 = subprocess.Popen(self._rpicam_cmd(cam0, cam0_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._preview_env())
+                    p1 = None
+                    if allow_cam1:
+                        p1 = subprocess.Popen(self._rpicam_cmd(cam1, cam1_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._preview_env())
                     try:
                         out0, err0 = p0.communicate(timeout=run_timeout_s)
                     except subprocess.TimeoutExpired:
                         p0.kill()
                         out0, err0 = "", "TimeoutExpired"
-                    try:
-                        out1, err1 = p1.communicate(timeout=run_timeout_s)
-                    except subprocess.TimeoutExpired:
-                        p1.kill()
-                        out1, err1 = "", "TimeoutExpired"
+                    out1 = err1 = ""
+                    if p1 is not None:
+                        try:
+                            out1, err1 = p1.communicate(timeout=run_timeout_s)
+                        except subprocess.TimeoutExpired:
+                            p1.kill()
+                            out1, err1 = "", "TimeoutExpired"
 
                     ok0 = (p0.returncode == 0) and os.path.exists(cam0_path) and os.path.getsize(cam0_path) > 0
-                    ok1 = (p1.returncode == 0) and os.path.exists(cam1_path) and os.path.getsize(cam1_path) > 0
+                    if allow_cam1 and p1 is not None:
+                        ok1 = (p1.returncode == 0) and os.path.exists(cam1_path) and os.path.getsize(cam1_path) > 0
+                    else:
+                        ok1 = True
                     if not ok0:
                         d0 = f"attempt={attempt+1}/{retries+1} cam=0 rc={p0.returncode}\nstdout:\n{out0}\nstderr:\n{err0}\n"
-                    if not ok1:
+                    if allow_cam1 and not ok1 and p1 is not None:
                         d1 = f"attempt={attempt+1}/{retries+1} cam=1 rc={p1.returncode}\nstdout:\n{out1}\nstderr:\n{err1}\n"
                 else:
                     ok0, d0 = self._run_one(cam0, cam0_path, quality, run_timeout_s)
-                    ok1, d1 = self._run_one(cam1, cam1_path, quality, run_timeout_s)
+                    if allow_cam1:
+                        ok1, d1 = self._run_one(cam1, cam1_path, quality, run_timeout_s)
+                    else:
+                        ok1 = True
 
                 if ok0 and ok1:
                     break
@@ -521,7 +630,7 @@ class CaptureService(Node):
 
         if not ok0 or not ok1:
             fail_cam0 = cam0_path if os.path.exists(cam0_path) else ""
-            fail_cam1 = cam1_path if os.path.exists(cam1_path) else ""
+            fail_cam1 = cam1_path if (allow_cam1 and os.path.exists(cam1_path)) else ""
             fail_msg = (
                 "CAPTURE FAILED\n"
                 f"cam0_ok={ok0} path={fail_cam0}\n{d0}\n"
@@ -530,8 +639,14 @@ class CaptureService(Node):
             self.get_logger().error(fail_msg)
             return False, fail_msg, fail_cam0, fail_cam1, stamp
 
+        if not allow_cam1:
+            cam1_path = ""
+            msg = "OK (cam1 skipped: only one camera detected)"
+        else:
+            msg = "OK"
+
         self.get_logger().info("Capture OK")
-        return True, "OK", cam0_path, cam1_path, stamp
+        return True, msg, cam0_path, cam1_path, stamp
 
     def on_capture(self, req: CapturePair.Request, res: CapturePair.Response) -> CapturePair.Response:
         with self._capture_lock:

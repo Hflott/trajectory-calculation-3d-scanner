@@ -136,6 +136,7 @@ def generate_launch_description():
             'manage_previews': manage_previews_bool,
             'start_previews': start_cameras_bool,
             'pause_previews': True,
+            'fallback_black_previews': False,
 
             'preview_width': preview_w,
             'preview_height': preview_h,

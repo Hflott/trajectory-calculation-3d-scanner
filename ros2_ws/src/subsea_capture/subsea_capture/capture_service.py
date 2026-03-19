@@ -304,10 +304,23 @@ class CaptureService(Node):
     def _stop_black_previews(self) -> None:
         if self._fallback_timer is not None:
             try:
-                self._fallback_timer.cancel()
+                self.destroy_timer(self._fallback_timer)
+            except Exception:
+                try:
+                    self._fallback_timer.cancel()
+                except Exception:
+                    pass
+        self._fallback_timer = None
+        if self._fallback_pub0 is not None:
+            try:
+                self.destroy_publisher(self._fallback_pub0)
             except Exception:
                 pass
-        self._fallback_timer = None
+        if self._fallback_pub1 is not None:
+            try:
+                self.destroy_publisher(self._fallback_pub1)
+            except Exception:
+                pass
         self._fallback_pub0 = None
         self._fallback_pub1 = None
         self._fallback_data = None

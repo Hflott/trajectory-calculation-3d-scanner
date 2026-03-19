@@ -351,6 +351,7 @@ class CaptureService(Node):
             "role": role,
             "width": w,
             "height": h,
+            "format": "RGB888",
             "FrameDurationLimits": [frame_us, frame_us],
             "use_node_time": False,
             "frame_id": frame_id,

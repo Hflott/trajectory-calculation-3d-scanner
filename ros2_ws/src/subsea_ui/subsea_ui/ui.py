@@ -437,23 +437,23 @@ class MainWindow(QWidget):
             lab.setAlignment(Qt.AlignCenter)
             lab.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             lab.setStyleSheet("background-color:black; color:white; font-size:16px; border-radius:12px;")
-            lab.setMinimumSize(240, 160)
+            lab.setMinimumSize(140, 90)
         for info in (self.prev0_info, self.prev1_info):
             info.setStyleSheet("color:#B0B0B0; padding:4px 2px;")
 
         # --- Actions
         self.capture_btn = QPushButton("CAPTURE (12MP JPEG)")
-        self.capture_btn.setMinimumHeight(64)
+        self.capture_btn.setMinimumHeight(40)
         self.capture_btn.setStyleSheet("font-size:24px; font-weight:700;")
         self.capture_btn.clicked.connect(self.on_capture)
 
         self.full_btn = QPushButton("Toggle Fullscreen (F11)")
-        self.full_btn.setMinimumHeight(64)
+        self.full_btn.setMinimumHeight(40)
         self.full_btn.setStyleSheet("font-size:18px;")
         self.full_btn.clicked.connect(self.toggle_fullscreen)
 
         self.quit_btn = QPushButton("Quit")
-        self.quit_btn.setMinimumHeight(64)
+        self.quit_btn.setMinimumHeight(40)
         self.quit_btn.clicked.connect(self.close)
 
         # Store last pixmaps so we can rescale on resize
@@ -515,7 +515,10 @@ class MainWindow(QWidget):
 
         preview_tab = QWidget()
         preview_tab.setLayout(preview_root)
-        self.tabs.addTab(preview_tab, "Preview")
+        preview_scroll = QScrollArea()
+        preview_scroll.setWidgetResizable(True)
+        preview_scroll.setWidget(preview_tab)
+        self.tabs.addTab(preview_scroll, "Preview")
 
         # ---- GNSS tab
         gnss_tab = QWidget()
@@ -632,7 +635,7 @@ class MainWindow(QWidget):
             r = QHBoxLayout()
             r.setSpacing(10)
             l = QLabel(label)
-            l.setMinimumWidth(170)
+            l.setMinimumWidth(130)
             r.addWidget(l)
             r.addWidget(widget, 1)
             return r
@@ -673,6 +676,7 @@ class MainWindow(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(self.tabs)
         self.setLayout(outer)
+        self.setMinimumSize(460, 320)
 
         os.makedirs(self.out_dir, exist_ok=True)
 
@@ -694,13 +698,25 @@ class MainWindow(QWidget):
         if not scr:
             return
         geo = scr.availableGeometry()
-        w = max(900, int(geo.width() * 0.85))
-        h = max(600, int(geo.height() * 0.85))
+        w = max(640, int(geo.width() * 0.9))
+        h = max(360, int(geo.height() * 0.9))
         w = min(w, geo.width())
         h = min(h, geo.height())
         x = geo.x() + max(0, (geo.width() - w) // 2)
         y = geo.y() + max(0, (geo.height() - h) // 2)
         self.setGeometry(x, y, w, h)
+        self._apply_compact_mode_if_small(geo.width(), geo.height())
+
+    def _apply_compact_mode_if_small(self, screen_w: int, screen_h: int):
+        if screen_h > 650 and screen_w > 1100:
+            return
+        self.capture_btn.setMinimumHeight(34)
+        self.full_btn.setMinimumHeight(34)
+        self.quit_btn.setMinimumHeight(34)
+        self.capture_btn.setStyleSheet("font-size:17px; font-weight:700;")
+        self.full_btn.setStyleSheet("font-size:14px;")
+        for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
+            lab.setMinimumSize(110, 70)
 
     def toggle_fullscreen(self):
         if self.windowState() & Qt.WindowFullScreen:

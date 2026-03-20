@@ -4,8 +4,10 @@ from launch.actions import (
     RegisterEventHandler,
     EmitEvent,
     SetEnvironmentVariable,
+    IncludeLaunchDescription,
 )
 from launch.conditions import IfCondition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression, EnvironmentVariable, TextSubstitution
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
@@ -13,6 +15,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 import os
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
@@ -20,6 +23,7 @@ def generate_launch_description():
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
+    start_localization = LaunchConfiguration('start_localization')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -188,15 +192,27 @@ def generate_launch_description():
         )
     )
 
+    localization_launch = os.path.join(
+        get_package_share_directory("subsea_localization"),
+        "launch",
+        "localization.launch.py",
+    )
+    localization = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(localization_launch),
+        condition=IfCondition(start_localization),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
+        DeclareLaunchArgument('start_localization', default_value='false'),
 
         *env_actions,
 
         cam0, cam1, cam0_r, cam1_r,
         capture,
         ui,
+        localization,
         shutdown_on_ui_exit,
     ])

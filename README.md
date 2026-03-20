@@ -29,6 +29,31 @@ Open on host browser:
 
 The real bringup uses Raspberry Pi cameras and `rpicam-still`, so mock mode is intended for desktop simulation only.
 
+## GNSS + IMU localization (robot_localization)
+A `subsea_localization` package is included with:
+- `ekf_local` (IMU + optional wheel/visual odom)
+- `navsat_transform_node` (GNSS to odom)
+- `ekf_global` (local odom + GPS odom)
+
+Run standalone:
+```bash
+cd /workspaces/trajectory-calculation-3d-scanner/ros2_ws
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch subsea_localization localization.launch.py \
+  imu_topic:=/imu/data \
+  gps_fix_topic:=/fix \
+  odom_input_topic:=/odometry/wheel
+```
+
+Or from main bringup:
+```bash
+ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
+```
+
+### PPS note (GPIO23, Raspberry Pi 5)
+`robot_localization` does not configure PPS itself. PPS must be enabled in Linux (`pps-gpio` and time-sync daemon such as `chrony`/`gpsd`) so GNSS/IMU timestamps are accurate before fusion.
+
 ## Manual commands (if needed)
 ```bash
 cd /workspaces/trajectory-calculation-3d-scanner/ros2_ws

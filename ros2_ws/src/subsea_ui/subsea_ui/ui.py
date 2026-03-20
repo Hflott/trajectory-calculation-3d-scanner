@@ -51,7 +51,7 @@ from rclpy.qos import (
 )
 from rclpy.task import Future
 from rclpy.utilities import remove_ros_args
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, Imu, NavSatFix, TimeReference
 from cv_bridge import CvBridge
 
 from subsea_interfaces.action import CapturePair as CapturePairAction
@@ -96,6 +96,15 @@ def load_jpeg_as_pix(path: str) -> Optional[QPixmap]:
 
 def _ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
+
+def _fmt_stamp(stamp) -> str:
+    if stamp is None:
+        return "—"
+    try:
+        return f"{int(stamp.sec)}.{int(stamp.nanosec):09d}"
+    except Exception:
+        return "—"
 
 
 def _conf_path() -> str:
@@ -218,6 +227,59 @@ class ImageSub(Node):
         return max(0.0, time.monotonic() - t), fps
 
 
+class GnssSub(Node):
+    def __init__(self, name: str, fix_topic: str, time_ref_topic: str, imu_topic: str):
+        super().__init__(name)
+        self.fix_topic = fix_topic
+        self.time_ref_topic = time_ref_topic
+        self.imu_topic = imu_topic
+
+        self._lock = threading.Lock()
+        self._fix: Optional[NavSatFix] = None
+        self._time_ref: Optional[TimeReference] = None
+        self._imu: Optional[Imu] = None
+        self._fix_rx_mono: Optional[float] = None
+        self._time_ref_rx_mono: Optional[float] = None
+        self._imu_rx_mono: Optional[float] = None
+
+        qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=5,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, qos)
+        self._time_ref_sub = self.create_subscription(TimeReference, time_ref_topic, self._on_time_ref, qos)
+        self._imu_sub = self.create_subscription(Imu, imu_topic, self._on_imu, qos)
+        self.get_logger().info(f"GNSS sub: fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic}")
+
+    def _on_fix(self, msg: NavSatFix):
+        with self._lock:
+            self._fix = msg
+            self._fix_rx_mono = time.monotonic()
+
+    def _on_time_ref(self, msg: TimeReference):
+        with self._lock:
+            self._time_ref = msg
+            self._time_ref_rx_mono = time.monotonic()
+
+    def _on_imu(self, msg: Imu):
+        with self._lock:
+            self._imu = msg
+            self._imu_rx_mono = time.monotonic()
+
+    def snapshot(self):
+        with self._lock:
+            return (
+                self._fix,
+                self._time_ref,
+                self._imu,
+                self._fix_rx_mono,
+                self._time_ref_rx_mono,
+                self._imu_rx_mono,
+            )
+
+
 class AppNode(Node):
     def __init__(self):
         cfg = load_config()
@@ -230,6 +292,9 @@ class AppNode(Node):
         self.declare_parameter("capture_action", cfg.get("capture_action", "capture_pair"))
         self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
         self.declare_parameter("mock_camera_node", cfg.get("mock_camera_node", "/mock_camera_publisher"))
+        self.declare_parameter("gnss_fix_topic", cfg.get("gnss_fix_topic", "/fix"))
+        self.declare_parameter("gnss_time_ref_topic", cfg.get("gnss_time_ref_topic", "/time_reference"))
+        self.declare_parameter("gnss_imu_topic", cfg.get("gnss_imu_topic", "/imu/data"))
         self.declare_parameter("output_dir", cfg.get("output_dir", os.path.expanduser("~/captures")))
         self.declare_parameter("jpeg_quality", int(cfg.get("jpeg_quality", 95)))
         self.declare_parameter("ui_fps", int(cfg.get("ui_fps", 15)))
@@ -331,11 +396,12 @@ class AppNode(Node):
 
 
 class MainWindow(QWidget):
-    def __init__(self, ros_node: AppNode, cam0: ImageSub, cam1: ImageSub):
+    def __init__(self, ros_node: AppNode, cam0: ImageSub, cam1: ImageSub, gnss: GnssSub):
         super().__init__()
         self.ros_node = ros_node
         self.cam0 = cam0
         self.cam1 = cam1
+        self.gnss = gnss
 
         self.setWindowTitle("Trajectory Capture UI")
 
@@ -451,6 +517,50 @@ class MainWindow(QWidget):
         preview_tab.setLayout(preview_root)
         self.tabs.addTab(preview_tab, "Preview")
 
+        # ---- GNSS tab
+        gnss_tab = QWidget()
+        gnss_root = QVBoxLayout()
+        gnss_root.setContentsMargins(10, 10, 10, 10)
+        gnss_root.setSpacing(8)
+
+        self.gnss_status = QLabel("GNSS: waiting…")
+        self.gnss_status.setStyleSheet("font-size:18px; font-weight:700;")
+        self.gnss_fix_age = QLabel("Fix age: —")
+        self.gnss_fix_stamp = QLabel("Fix stamp: —")
+        self.gnss_latlon = QLabel("Lat/Lon: —")
+        self.gnss_alt = QLabel("Alt: —")
+        self.gnss_cov = QLabel("Covariance: —")
+        self.gnss_fix_meta = QLabel("Status: —")
+
+        self.gnss_time_ref = QLabel("TimeRef stamp: —")
+        self.gnss_time_ref_src = QLabel("TimeRef source: —")
+        self.gnss_time_ref_age = QLabel("TimeRef age: —")
+
+        self.imu_stamp = QLabel("IMU stamp: —")
+        self.imu_vals = QLabel("IMU ang vel / lin acc: —")
+        self.imu_age = QLabel("IMU age: —")
+
+        for l in (
+            self.gnss_fix_age,
+            self.gnss_fix_stamp,
+            self.gnss_latlon,
+            self.gnss_alt,
+            self.gnss_cov,
+            self.gnss_fix_meta,
+            self.gnss_time_ref,
+            self.gnss_time_ref_src,
+            self.gnss_time_ref_age,
+            self.imu_stamp,
+            self.imu_vals,
+            self.imu_age,
+        ):
+            l.setStyleSheet("font-size:15px;")
+            gnss_root.addWidget(l)
+
+        gnss_root.insertWidget(0, self.gnss_status)
+        gnss_tab.setLayout(gnss_root)
+        self.tabs.addTab(gnss_tab, "GNSS")
+
         # ---- Capture tab (scrollable to prevent cut-off)
         cap_row = QHBoxLayout()
         cap_row.setSpacing(10)
@@ -504,8 +614,18 @@ class MainWindow(QWidget):
         self.cam0_topic_edit = QLineEdit(str(self.ros_node.get_parameter("cam0_topic").value))
         self.cam1_topic_edit = QLineEdit(str(self.ros_node.get_parameter("cam1_topic").value))
         self.srv_name_edit = QLineEdit(str(self.ros_node.get_parameter("capture_service").value))
+        self.gnss_fix_topic_edit = QLineEdit(str(self.ros_node.get_parameter("gnss_fix_topic").value))
+        self.gnss_time_ref_topic_edit = QLineEdit(str(self.ros_node.get_parameter("gnss_time_ref_topic").value))
+        self.gnss_imu_topic_edit = QLineEdit(str(self.ros_node.get_parameter("gnss_imu_topic").value))
 
-        for w in (self.cam0_topic_edit, self.cam1_topic_edit, self.srv_name_edit):
+        for w in (
+            self.cam0_topic_edit,
+            self.cam1_topic_edit,
+            self.srv_name_edit,
+            self.gnss_fix_topic_edit,
+            self.gnss_time_ref_topic_edit,
+            self.gnss_imu_topic_edit,
+        ):
             w.setToolTip("Changing topics/services requires restarting the UI node")
 
         def row(label: str, widget: QWidget) -> QHBoxLayout:
@@ -526,6 +646,9 @@ class MainWindow(QWidget):
         sroot.addLayout(row("Cam0 topic", self.cam0_topic_edit))
         sroot.addLayout(row("Cam1 topic", self.cam1_topic_edit))
         sroot.addLayout(row("Capture service", self.srv_name_edit))
+        sroot.addLayout(row("GNSS fix topic", self.gnss_fix_topic_edit))
+        sroot.addLayout(row("GNSS time ref topic", self.gnss_time_ref_topic_edit))
+        sroot.addLayout(row("GNSS IMU topic", self.gnss_imu_topic_edit))
         sroot.addWidget(self.out_dir_apply)
         sroot.addStretch(1)
         settings.setLayout(sroot)
@@ -607,9 +730,62 @@ class MainWindow(QWidget):
         if self._preview_paused:
             self.prev0_info.setText("paused for capture…")
             self.prev1_info.setText("paused for capture…")
-            return
-        self._render_preview(self.prev0, self.prev0_info, self.cam0, "Cam0")
-        self._render_preview(self.prev1, self.prev1_info, self.cam1, "Cam1")
+        else:
+            self._render_preview(self.prev0, self.prev0_info, self.cam0, "Cam0")
+            self._render_preview(self.prev1, self.prev1_info, self.cam1, "Cam1")
+        self._refresh_gnss()
+
+    def _refresh_gnss(self) -> None:
+        fix, time_ref, imu, fix_rx, time_rx, imu_rx = self.gnss.snapshot()
+        now_m = time.monotonic()
+
+        if fix is None:
+            self.gnss_status.setText("GNSS: waiting for NavSatFix...")
+            self.gnss_fix_age.setText("Fix age: —")
+            self.gnss_fix_stamp.setText("Fix stamp: —")
+            self.gnss_latlon.setText("Lat/Lon: —")
+            self.gnss_alt.setText("Alt: —")
+            self.gnss_cov.setText("Covariance: —")
+            self.gnss_fix_meta.setText("Status: —")
+        else:
+            age_ms = (now_m - fix_rx) * 1000.0 if fix_rx is not None else 1e9
+            self.gnss_status.setText("GNSS: receiving")
+            self.gnss_fix_age.setText(f"Fix age: {age_ms:.0f} ms")
+            self.gnss_fix_stamp.setText(f"Fix stamp: {_fmt_stamp(fix.header.stamp)}")
+            self.gnss_latlon.setText(f"Lat/Lon: {fix.latitude:.8f}, {fix.longitude:.8f}")
+            self.gnss_alt.setText(f"Alt: {fix.altitude:.3f} m")
+            cov = fix.position_covariance
+            self.gnss_cov.setText(
+                f"Covariance diag: [{cov[0]:.4f}, {cov[4]:.4f}, {cov[8]:.4f}] type={int(fix.position_covariance_type)}"
+            )
+            self.gnss_fix_meta.setText(f"Status: status={int(fix.status.status)} service={int(fix.status.service)}")
+
+        if time_ref is None:
+            self.gnss_time_ref.setText("TimeRef stamp: —")
+            self.gnss_time_ref_src.setText("TimeRef source: —")
+            self.gnss_time_ref_age.setText("TimeRef age: —")
+        else:
+            age_ms = (now_m - time_rx) * 1000.0 if time_rx is not None else 1e9
+            self.gnss_time_ref.setText(
+                f"TimeRef stamp: ros={_fmt_stamp(time_ref.header.stamp)} ref={_fmt_stamp(time_ref.time_ref)}"
+            )
+            self.gnss_time_ref_src.setText(f"TimeRef source: {time_ref.source or '—'}")
+            self.gnss_time_ref_age.setText(f"TimeRef age: {age_ms:.0f} ms")
+
+        if imu is None:
+            self.imu_stamp.setText("IMU stamp: —")
+            self.imu_vals.setText("IMU ang vel / lin acc: —")
+            self.imu_age.setText("IMU age: —")
+        else:
+            age_ms = (now_m - imu_rx) * 1000.0 if imu_rx is not None else 1e9
+            self.imu_stamp.setText(f"IMU stamp: {_fmt_stamp(imu.header.stamp)}")
+            self.imu_vals.setText(
+                "IMU ang vel [rad/s]: "
+                f"{imu.angular_velocity.x:.4f}, {imu.angular_velocity.y:.4f}, {imu.angular_velocity.z:.4f} | "
+                "lin acc [m/s^2]: "
+                f"{imu.linear_acceleration.x:.4f}, {imu.linear_acceleration.y:.4f}, {imu.linear_acceleration.z:.4f}"
+            )
+            self.imu_age.setText(f"IMU age: {age_ms:.0f} ms")
 
     def _render_preview(self, label: QLabel, info: QLabel, sub: ImageSub, name: str):
         if not sub.got_first_frame():
@@ -773,6 +949,9 @@ class MainWindow(QWidget):
             "cam0_topic": self.cam0_topic_edit.text().strip(),
             "cam1_topic": self.cam1_topic_edit.text().strip(),
             "capture_service": self.srv_name_edit.text().strip(),
+            "gnss_fix_topic": self.gnss_fix_topic_edit.text().strip(),
+            "gnss_time_ref_topic": self.gnss_time_ref_topic_edit.text().strip(),
+            "gnss_imu_topic": self.gnss_imu_topic_edit.text().strip(),
         }
         save_config(cfg)
         self.status.setText("Status: settings saved (restart for topic/service changes)")
@@ -813,6 +992,12 @@ def main():
     app_node = AppNode()
     cam0 = ImageSub("cam0_preview_sub", str(app_node.get_parameter("cam0_topic").value))
     cam1 = ImageSub("cam1_preview_sub", str(app_node.get_parameter("cam1_topic").value))
+    gnss = GnssSub(
+        "gnss_sub",
+        str(app_node.get_parameter("gnss_fix_topic").value),
+        str(app_node.get_parameter("gnss_time_ref_topic").value),
+        str(app_node.get_parameter("gnss_imu_topic").value),
+    )
 
     app = QApplication(qt_argv)
     apply_dark_theme(app)
@@ -823,10 +1008,11 @@ def main():
     executor.add_node(app_node)
     executor.add_node(cam0)
     executor.add_node(cam1)
+    executor.add_node(gnss)
     spin_thread = threading.Thread(target=executor.spin, daemon=True)
     spin_thread.start()
 
-    w = MainWindow(app_node, cam0, cam1)
+    w = MainWindow(app_node, cam0, cam1, gnss)
     if os.environ.get("SUBSEA_UI_FULLSCREEN", "0") == "1":
         w.setWindowState(w.windowState() | Qt.WindowFullScreen)
     w.show()
@@ -840,6 +1026,7 @@ def main():
     app_node.destroy_node()
     cam0.destroy_node()
     cam1.destroy_node()
+    gnss.destroy_node()
     rclpy.try_shutdown()
     return int(ret)
 

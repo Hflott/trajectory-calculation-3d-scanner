@@ -29,6 +29,35 @@ Open on host browser:
 
 The real bringup uses Raspberry Pi cameras and `rpicam-still`, so mock mode is intended for desktop simulation only.
 
+## Native Ubuntu 24.04 bootstrap (new device)
+For a fresh Ubuntu 24.04 LTS server install, this script installs ROS 2 Jazzy, required apt repositories, camera dependencies, rosdep dependencies, git submodules (including `camera_ros`), and builds the workspace.
+
+```bash
+git clone --recurse-submodules https://github.com/Hflott/trajectory-calculation-3d-scanner.git
+cd trajectory-calculation-3d-scanner
+./scripts/bootstrap_ubuntu_24_04.sh
+```
+
+On Raspberry Pi, the bootstrap also auto-configures common accessories for your stack:
+- Enables `UART` + `I2C`
+- Adds PPS overlay (`dtoverlay=pps-gpio,gpiopin=23` by default)
+- Installs/configures `gpsd` + `chrony` + `pps-tools`
+- Attempts to auto-detect GNSS serial device (`/dev/serial/by-id/*`, then common `/dev/tty*` fallbacks)
+
+After first run on Pi, reboot once to apply boot overlay changes.
+
+Optional: install a browser-based GUI stack (Xvfb + noVNC) for headless systems:
+
+```bash
+./scripts/bootstrap_ubuntu_24_04.sh --with-novnc
+```
+
+Optional Pi flags:
+```bash
+./scripts/bootstrap_ubuntu_24_04.sh --pps-gpio-pin 23
+./scripts/bootstrap_ubuntu_24_04.sh --no-rpi-autoconfig
+```
+
 ## GNSS + IMU localization (robot_localization)
 A `subsea_localization` package is included with:
 - `ekf_local` (IMU + optional wheel/visual odom)

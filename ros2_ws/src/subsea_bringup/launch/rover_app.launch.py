@@ -1,9 +1,21 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import (
+    DeclareLaunchArgument,
+    RegisterEventHandler,
+    EmitEvent,
+    SetEnvironmentVariable,
+    IncludeLaunchDescription,
+)
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PythonExpression, EnvironmentVariable, TextSubstitution
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+import os
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
@@ -11,8 +23,9 @@ def generate_launch_description():
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
+    start_localization = LaunchConfiguration('start_localization')
 
-    # Convert LaunchConfiguration "true/false" strings to real bool params
+    # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
     manage_previews_bool = ParameterValue(manage_previews, value_type=bool)
 
@@ -38,11 +51,30 @@ def generate_launch_description():
         ])
     )
 
-    # --- Camera previews (non-respawning)
+    # --- Ensure the *correct* libcamera + IPA modules are used (prevents "waiting..." + serializer crashes)
+    camera_ws = os.path.expanduser("~/camera_ws/install")
+    libcamera_lib = os.path.join(camera_ws, "libcamera", "lib")
+    ipa_dir = os.path.join(camera_ws, "libcamera", "lib", "libcamera", "ipa")
+
+    env_actions = []
+    if os.path.isdir(libcamera_lib):
+        env_actions.append(
+            SetEnvironmentVariable(
+                name="LD_LIBRARY_PATH",
+                value=[
+                    TextSubstitution(text=libcamera_lib + ":"),
+                    EnvironmentVariable("LD_LIBRARY_PATH"),
+                ],
+            )
+        )
+    if os.path.isdir(ipa_dir):
+        env_actions.append(SetEnvironmentVariable(name="LIBCAMERA_IPA_MODULE_PATH", value=ipa_dir))
+
+    # --- Camera previews (ONLY used when manage_previews:=false)
     cam0 = Node(
         package='camera_ros',
         executable='camera_node',
-        name='camera0',
+        name='camera',
         namespace='cam0',
         output='screen',
         parameters=[{
@@ -50,7 +82,6 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w,
             'height': preview_h,
-            'format': 'RGB888',
             'FrameDurationLimits': [frame_us, frame_us],
             'use_node_time': False,
         }],
@@ -61,7 +92,7 @@ def generate_launch_description():
     cam1 = Node(
         package='camera_ros',
         executable='camera_node',
-        name='camera1',
+        name='camera',
         namespace='cam1',
         output='screen',
         parameters=[{
@@ -69,7 +100,6 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w,
             'height': preview_h,
-            'format': 'RGB888',
             'FrameDurationLimits': [frame_us, frame_us],
             'use_node_time': False,
         }],
@@ -77,11 +107,10 @@ def generate_launch_description():
         condition=cam_condition_no_respawn,
     )
 
-    # --- Camera previews (respawning)
     cam0_r = Node(
         package='camera_ros',
         executable='camera_node',
-        name='camera0',
+        name='camera',
         namespace='cam0',
         output='screen',
         parameters=[{
@@ -89,7 +118,6 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w,
             'height': preview_h,
-            'format': 'RGB888',
             'FrameDurationLimits': [frame_us, frame_us],
             'use_node_time': False,
         }],
@@ -101,7 +129,7 @@ def generate_launch_description():
     cam1_r = Node(
         package='camera_ros',
         executable='camera_node',
-        name='camera1',
+        name='camera',
         namespace='cam1',
         output='screen',
         parameters=[{
@@ -109,7 +137,6 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w,
             'height': preview_h,
-            'format': 'RGB888',
             'FrameDurationLimits': [frame_us, frame_us],
             'use_node_time': False,
         }],
@@ -128,15 +155,14 @@ def generate_launch_description():
             'cam1_index': 1,
             'width': 4056,
             'height': 3040,
-            'timeout_ms': 250,
-            'warmup_ms': 250,
+            'timeout_ms': 6000,     # give still capture some breathing room
+            'warmup_ms': 700,
             'default_quality': 95,
 
-            # Preview pause/resume implementation
+            # Preview pause/resume
             'manage_previews': manage_previews_bool,
             'start_previews': start_cameras_bool,
             'pause_previews': True,
-            'fallback_black_previews': False,
 
             'preview_width': preview_w,
             'preview_height': preview_h,
@@ -144,7 +170,6 @@ def generate_launch_description():
             'preview_role': 'viewfinder',
 
             # Make preview topics match the UI defaults:
-            # /cam0/camera/image_raw and /cam1/camera/image_raw
             'cam0_namespace': '/cam0',
             'cam1_namespace': '/cam1',
             'cam0_node_name': 'camera',
@@ -159,15 +184,35 @@ def generate_launch_description():
         output='screen'
     )
 
+    # When UI exits, shut down the whole launch (fixes "terminal never exits")
+    shutdown_on_ui_exit = RegisterEventHandler(
+        OnProcessExit(
+            target_action=ui,
+            on_exit=[EmitEvent(event=Shutdown(reason="UI closed"))],
+        )
+    )
+
+    localization_launch = os.path.join(
+        get_package_share_directory("subsea_localization"),
+        "launch",
+        "localization.launch.py",
+    )
+    localization = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(localization_launch),
+        condition=IfCondition(start_localization),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
+        DeclareLaunchArgument('start_localization', default_value='false'),
 
-        cam0,
-        cam1,
-        cam0_r,
-        cam1_r,
+        *env_actions,
+
+        cam0, cam1, cam0_r, cam1_r,
         capture,
         ui,
+        localization,
+        shutdown_on_ui_exit,
     ])

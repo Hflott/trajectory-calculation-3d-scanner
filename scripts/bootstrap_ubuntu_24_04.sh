@@ -124,6 +124,7 @@ install_base_packages() {
   run_root apt-get update
   apt_install \
     python3-colcon-common-extensions \
+    python3-libgpiod \
     python3-numpy \
     python3-opencv \
     python3-pillow \

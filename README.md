@@ -94,6 +94,26 @@ ros2 launch subsea_bringup rover_app.launch.py \
   capture_mode:=still
 ```
 
+## GPIO button trigger (Raspberry Pi)
+You can trigger captures from a physical button wired to a GPIO input.
+
+Default launch settings:
+- enabled by default (`enable_gpio_button:=true`)
+- pin `GPIO24` (`gpio_button_pin:=24`, BCM numbering)
+- active-low trigger (button to `GND`)
+
+Example:
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  capture_mode:=stream \
+  gpio_button_pin:=24
+```
+
+Wiring recommendation:
+- one side of button to `GPIO24`
+- other side to `GND`
+- keep `GPIO23` reserved for PPS if you use GNSS PPS there
+
 ### PPS note (GPIO23, Raspberry Pi 5)
 `robot_localization` does not configure PPS itself. PPS must be enabled in Linux (`pps-gpio` and time-sync daemon such as `chrony`/`gpsd`) so GNSS/IMU timestamps are accurate before fusion.
 

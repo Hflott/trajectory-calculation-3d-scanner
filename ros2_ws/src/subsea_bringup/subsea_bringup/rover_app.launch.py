@@ -25,10 +25,14 @@ def generate_launch_description():
     respawn_cameras = LaunchConfiguration('respawn_cameras')
     start_localization = LaunchConfiguration('start_localization')
     capture_mode = LaunchConfiguration('capture_mode')
+    enable_gpio_button = LaunchConfiguration('enable_gpio_button')
+    gpio_button_pin = LaunchConfiguration('gpio_button_pin')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
     manage_previews_bool = ParameterValue(manage_previews, value_type=bool)
+    enable_gpio_button_bool = ParameterValue(enable_gpio_button, value_type=bool)
+    gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
 
     # Low-latency preview settings
     preview_w = 960
@@ -188,6 +192,11 @@ def generate_launch_description():
             'cam0_node_name': 'camera',
             'cam1_node_name': 'camera',
             'use_local_libcamera_env': False,
+            'gpio_trigger_enable': enable_gpio_button_bool,
+            'gpio_trigger_line': gpio_button_pin_int,
+            'gpio_trigger_active_low': True,
+            'gpio_trigger_cooldown_ms': 700,
+            'gpio_trigger_session_prefix': 'btn',
         }]
     )
 
@@ -222,6 +231,8 @@ def generate_launch_description():
         DeclareLaunchArgument('manage_previews', default_value='true'),
         DeclareLaunchArgument('start_localization', default_value='false'),
         DeclareLaunchArgument('capture_mode', default_value='stream'),
+        DeclareLaunchArgument('enable_gpio_button', default_value='true'),
+        DeclareLaunchArgument('gpio_button_pin', default_value='24'),
 
         *env_actions,
 

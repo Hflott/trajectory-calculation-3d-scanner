@@ -203,6 +203,15 @@ class CaptureService(Node):
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
+        self.declare_parameter("gpio_trigger_enable", False)
+        self.declare_parameter("gpio_trigger_chip", "/dev/gpiochip0")
+        self.declare_parameter("gpio_trigger_line", 24)
+        self.declare_parameter("gpio_trigger_active_low", True)
+        self.declare_parameter("gpio_trigger_cooldown_ms", 1000)
+        self.declare_parameter("gpio_trigger_session_prefix", "btn")
+        self.declare_parameter("gpio_trigger_output_dir", "")
+        self.declare_parameter("gpio_trigger_quality", 0)
+        self.declare_parameter("gpio_trigger_poll_ms", 20)
 
         # Reliability / timing knobs
         self.declare_parameter("preview_shutdown_timeout_s", 2.5)
@@ -242,6 +251,14 @@ class CaptureService(Node):
         self._buf_fix: Deque[NavSatFix] = deque()
         self._buf_time_ref: Deque[TimeReference] = deque()
         self._buf_imu: Deque[Imu] = deque()
+        self._gpio_mod = None
+        self._gpio_chip = None
+        self._gpio_line_obj = None
+        self._gpio_req = None
+        self._gpio_timer = None
+        self._gpio_prev_pressed = False
+        self._gpio_last_trigger_mono = 0.0
+        self._gpio_capture_thread = None
 
         img_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -288,6 +305,7 @@ class CaptureService(Node):
         self.get_logger().info("Capture service ready: /capture_pair")
         self.get_logger().info("Capture action ready: /capture_pair")
         self.get_logger().info(f"Capture mode: {self._capture_mode()}")
+        self._setup_gpio_trigger()
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
             auto_detect = bool(self.get_parameter("auto_detect_cameras").value)
@@ -337,6 +355,186 @@ class CaptureService(Node):
         if node_name:
             return f"/{node_name}/image_raw"
         return "/image_raw"
+
+    def _setup_gpio_trigger(self) -> None:
+        if not bool(self.get_parameter("gpio_trigger_enable").value):
+            return
+
+        try:
+            import gpiod  # type: ignore
+        except Exception as e:
+            self.get_logger().error(f"GPIO trigger disabled: python gpiod import failed: {e}")
+            return
+
+        chip_name = str(self.get_parameter("gpio_trigger_chip").value)
+        line_offset = int(self.get_parameter("gpio_trigger_line").value)
+        active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+        poll_ms = max(5, int(self.get_parameter("gpio_trigger_poll_ms").value))
+
+        chip = None
+        try:
+            chip = gpiod.Chip(chip_name)
+        except Exception:
+            # Fallback for APIs expecting logical chip name instead of full path.
+            try:
+                chip = gpiod.Chip(os.path.basename(chip_name))
+            except Exception as e:
+                self.get_logger().error(
+                    f"GPIO trigger disabled: failed to open chip '{chip_name}': {e}"
+                )
+                return
+
+        try:
+            # gpiod v2 path
+            if hasattr(gpiod, "LineSettings") and hasattr(chip, "request_lines"):
+                ls_kwargs = {}
+                if hasattr(gpiod, "line") and hasattr(gpiod.line, "Direction"):
+                    ls_kwargs["direction"] = gpiod.line.Direction.INPUT
+                if hasattr(gpiod, "line") and hasattr(gpiod.line, "Bias"):
+                    ls_kwargs["bias"] = (
+                        gpiod.line.Bias.PULL_UP if active_low else gpiod.line.Bias.PULL_DOWN
+                    )
+                settings = gpiod.LineSettings(**ls_kwargs)
+                self._gpio_req = chip.request_lines(
+                    consumer="subsea_capture",
+                    config={line_offset: settings},
+                )
+            else:
+                # gpiod v1 path
+                line = chip.get_line(line_offset)
+                req_type = getattr(gpiod, "LINE_REQ_DIR_IN")
+                flags = 0
+                if active_low and hasattr(gpiod, "LINE_REQ_FLAG_BIAS_PULL_UP"):
+                    flags |= getattr(gpiod, "LINE_REQ_FLAG_BIAS_PULL_UP")
+                if (not active_low) and hasattr(gpiod, "LINE_REQ_FLAG_BIAS_PULL_DOWN"):
+                    flags |= getattr(gpiod, "LINE_REQ_FLAG_BIAS_PULL_DOWN")
+                line.request(consumer="subsea_capture", type=req_type, flags=flags)
+                self._gpio_line_obj = line
+        except Exception as e:
+            self.get_logger().error(
+                f"GPIO trigger disabled: failed to request line {line_offset} on {chip_name}: {e}"
+            )
+            try:
+                chip.close()
+            except Exception:
+                pass
+            return
+
+        self._gpio_mod = gpiod
+        self._gpio_chip = chip
+        self._gpio_prev_pressed = False
+        self._gpio_last_trigger_mono = 0.0
+        self._gpio_timer = self.create_timer(poll_ms / 1000.0, self._gpio_poll_cb)
+        self.get_logger().info(
+            f"GPIO trigger enabled: chip={chip_name} line={line_offset} "
+            f"active_low={active_low} poll_ms={poll_ms}"
+        )
+
+    def _read_gpio_pressed(self) -> Optional[bool]:
+        raw = None
+        line_offset = int(self.get_parameter("gpio_trigger_line").value)
+        active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+
+        try:
+            if self._gpio_req is not None:
+                raw = self._gpio_req.get_value(line_offset)
+            elif self._gpio_line_obj is not None:
+                raw = self._gpio_line_obj.get_value()
+            else:
+                return None
+        except Exception as e:
+            self.get_logger().error(f"GPIO read failed: {e}")
+            return None
+
+        try:
+            if hasattr(raw, "value"):
+                raw_i = int(raw.value)
+            else:
+                raw_i = int(raw)
+        except Exception:
+            raw_s = str(raw).upper()
+            raw_i = 1 if ("ACTIVE" in raw_s or raw_s.endswith("1")) else 0
+
+        return (raw_i == 0) if active_low else (raw_i != 0)
+
+    def _gpio_poll_cb(self) -> None:
+        pressed = self._read_gpio_pressed()
+        if pressed is None:
+            return
+
+        # Trigger on press edge only.
+        if pressed and not self._gpio_prev_pressed:
+            now_m = time.monotonic()
+            cooldown_s = max(0.05, float(self.get_parameter("gpio_trigger_cooldown_ms").value) / 1000.0)
+            if (now_m - self._gpio_last_trigger_mono) >= cooldown_s:
+                self._gpio_last_trigger_mono = now_m
+                self._on_gpio_trigger()
+        self._gpio_prev_pressed = pressed
+
+    def _on_gpio_trigger(self) -> None:
+        if self._gpio_capture_thread is not None and self._gpio_capture_thread.is_alive():
+            self.get_logger().warn("GPIO trigger ignored: capture already in progress")
+            return
+
+        self._gpio_capture_thread = threading.Thread(
+            target=self._gpio_capture_worker,
+            daemon=True,
+        )
+        self._gpio_capture_thread.start()
+
+    def _gpio_capture_worker(self) -> None:
+        prefix = str(self.get_parameter("gpio_trigger_session_prefix").value).strip() or "btn"
+        session = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')[:-3]}"
+        out_dir = str(self.get_parameter("gpio_trigger_output_dir").value).strip()
+        quality = int(self.get_parameter("gpio_trigger_quality").value)
+
+        self.get_logger().info(f"GPIO button pressed -> capture session={session}")
+        with self._capture_lock:
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+                session,
+                out_dir,
+                quality,
+                feedback_cb=None,
+            )
+        if success:
+            self.get_logger().info(
+                f"GPIO capture OK stamp={_stamp_to_str(stamp)} cam0={cam0_path} cam1={cam1_path}"
+            )
+        else:
+            self.get_logger().error(f"GPIO capture failed: {message}")
+
+    def _cleanup_gpio_trigger(self) -> None:
+        if self._gpio_timer is not None:
+            try:
+                self.destroy_timer(self._gpio_timer)
+            except Exception:
+                try:
+                    self._gpio_timer.cancel()
+                except Exception:
+                    pass
+        self._gpio_timer = None
+
+        if self._gpio_req is not None:
+            try:
+                self._gpio_req.release()
+            except Exception:
+                pass
+        self._gpio_req = None
+
+        if self._gpio_line_obj is not None:
+            try:
+                self._gpio_line_obj.release()
+            except Exception:
+                pass
+        self._gpio_line_obj = None
+
+        if self._gpio_chip is not None:
+            try:
+                self._gpio_chip.close()
+            except Exception:
+                pass
+        self._gpio_chip = None
+        self._gpio_mod = None
 
     def _trim_sensor_buffers_locked(self) -> None:
         keep_s = float(self.get_parameter("sensor_buffer_s").value)
@@ -1165,6 +1363,10 @@ def main():
             pass
         try:
             node._stop_black_previews()
+        except Exception:
+            pass
+        try:
+            node._cleanup_gpio_trigger()
         except Exception:
             pass
         try:

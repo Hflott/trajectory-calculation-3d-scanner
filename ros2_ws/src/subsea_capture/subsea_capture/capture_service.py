@@ -173,6 +173,28 @@ def _sanitize_preview_ld_library_path(ld_path: str) -> str:
     return ":".join(keep)
 
 
+def _linked_libcamera_path(exe_path: str) -> Optional[str]:
+    try:
+        p = subprocess.run(
+            ["ldd", exe_path],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+    except Exception:
+        return None
+    if p.returncode != 0:
+        return None
+    txt = (p.stdout or "") + "\n" + (p.stderr or "")
+    for line in txt.splitlines():
+        if "libcamera.so" not in line:
+            continue
+        m = re.search(r"=>\s+(\S+)", line)
+        if m:
+            return m.group(1)
+    return None
+
+
 def _stamp_to_ns(stamp: TimeMsg) -> int:
     return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
 
@@ -919,6 +941,14 @@ class CaptureService(Node):
         if self._camera_node_exe is None:
             self._camera_node_exe = _camera_ros_exe_path()
             self.get_logger().info(f"camera_ros executable: {self._camera_node_exe}")
+            linked_libcamera = _linked_libcamera_path(self._camera_node_exe)
+            if linked_libcamera:
+                self.get_logger().info(f"camera_ros linked libcamera: {linked_libcamera}")
+                if "/opt/ros/" in linked_libcamera:
+                    self.get_logger().warn(
+                        "camera_ros links against /opt/ros libcamera. On Raspberry Pi this may report "
+                        "'no cameras available'. Prefer system/RPi libcamera and rebuild camera_ros."
+                    )
             if self._camera_node_exe.startswith("/opt/ros/"):
                 self.get_logger().warn(
                     "Using camera_ros from /opt/ros. If previews fail with 'no cameras available', "

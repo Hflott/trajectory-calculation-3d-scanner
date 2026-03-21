@@ -150,7 +150,9 @@ install_optional_gui_stack() {
 
 install_camera_stack() {
   log "Installing camera capture prerequisites"
-  if apt-cache show "ros-${ROS_DISTRO}-camera-ros" >/dev/null 2>&1; then
+  if is_raspberry_pi; then
+    log "Raspberry Pi detected: skipping apt camera_ros (workspace build recommended)."
+  elif apt-cache show "ros-${ROS_DISTRO}-camera-ros" >/dev/null 2>&1; then
     apt_install "ros-${ROS_DISTRO}-camera-ros"
   else
     warn "ros-${ROS_DISTRO}-camera-ros not available via apt; will use workspace/submodule build."
@@ -348,7 +350,12 @@ build_workspace() {
   # shellcheck disable=SC1091
   source "/opt/ros/${ROS_DISTRO}/setup.bash"
   cd "${WS_DIR}"
-  rosdep install --from-paths src --ignore-src --rosdistro "${ROS_DISTRO}" -r -y --skip-keys ament_python
+  local skip_keys="ament_python"
+  if is_raspberry_pi; then
+    # Prefer Raspberry Pi/system libcamera over ros-${ROS_DISTRO}-libcamera.
+    skip_keys="${skip_keys} libcamera"
+  fi
+  rosdep install --from-paths src --ignore-src --rosdistro "${ROS_DISTRO}" -r -y --skip-keys "${skip_keys}"
 
   log "Building workspace"
   colcon build --symlink-install

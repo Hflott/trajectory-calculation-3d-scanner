@@ -185,6 +185,9 @@ def generate_launch_description():
             'preview_fps': preview_fps_int,
             'preview_format': preview_format,
             'preview_role': 'viewfinder',
+            'preview_start_stagger_s': 0.9,
+            'preview_restart_attempts': 3,
+            'preview_restart_delay_s': 0.8,
 
             # Make preview topics match the UI defaults:
             'cam0_namespace': '/cam0',

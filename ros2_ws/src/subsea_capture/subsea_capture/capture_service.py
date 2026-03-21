@@ -234,6 +234,9 @@ class CaptureService(Node):
         self.declare_parameter("preview_fps", 20)
         self.declare_parameter("preview_format", "BGR888")
         self.declare_parameter("preview_role", "viewfinder")
+        self.declare_parameter("preview_start_stagger_s", 0.7)
+        self.declare_parameter("preview_restart_attempts", 2)
+        self.declare_parameter("preview_restart_delay_s", 0.6)
 
         self.declare_parameter("cam0_namespace", "/cam0")
         self.declare_parameter("cam1_namespace", "/cam1")
@@ -281,6 +284,7 @@ class CaptureService(Node):
         self._fallback_data: Optional[bytes] = None
         self._detected_cam_count: Optional[int] = None
         self._expected_preview_cams: Optional[int] = None
+        self._preview_restart_count: int = 0
         self._bridge = CvBridge()
         self._stream_lock = threading.Lock()
         self._latest_cam0_msg: Optional[Image] = None
@@ -994,6 +998,7 @@ class CaptureService(Node):
 
         expected = None if camera_count is None else max(0, min(2, camera_count))
         self._expected_preview_cams = expected
+        self._preview_restart_count = 0
 
         if expected is None or expected >= 1:
             if self._p0 is None or self._p0.poll() is not None:
@@ -1006,6 +1011,9 @@ class CaptureService(Node):
 
         if expected is None or expected >= 2:
             if self._p1 is None or self._p1.poll() is not None:
+                stagger_s = max(0.0, float(self.get_parameter("preview_start_stagger_s").value))
+                if stagger_s > 0.0 and self._p0 is not None and self._p0.poll() is None:
+                    time.sleep(stagger_s)
                 self._p1 = self._start_preview_proc(cam1, ns1, n1, self._p1_params, "cam1_optical_frame")
                 self.get_logger().info(f"cam1 preview started (pid={self._p1.pid})")
         else:
@@ -1048,6 +1056,17 @@ class CaptureService(Node):
         if self._expected_preview_cams >= 2 and p1_dead:
             dead.append("cam1")
         if dead:
+            max_restarts = max(0, int(self.get_parameter("preview_restart_attempts").value))
+            if self._preview_restart_count < max_restarts:
+                self._preview_restart_count += 1
+                self.get_logger().warn(
+                    f"Preview camera nodes exited early ({', '.join(dead)}). "
+                    f"Retrying failed previews ({self._preview_restart_count}/{max_restarts})."
+                )
+                self._restart_failed_previews(dead)
+                self._verify_previews_started()
+                return
+
             self.get_logger().warn(
                 f"Preview camera nodes exited early ({', '.join(dead)}). "
                 "Falling back to black previews."
@@ -1059,6 +1078,34 @@ class CaptureService(Node):
                 self.get_logger().warn(
                     "fallback_black_previews:=false, leaving failed cameras inactive."
                 )
+
+    def _restart_failed_previews(self, dead: List[str]) -> None:
+        cam0 = int(self.get_parameter("cam0_index").value)
+        cam1 = int(self.get_parameter("cam1_index").value)
+        ns0 = str(self.get_parameter("cam0_namespace").value)
+        ns1 = str(self.get_parameter("cam1_namespace").value)
+        n0 = str(self.get_parameter("cam0_node_name").value)
+        n1 = str(self.get_parameter("cam1_node_name").value)
+        timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)
+        delay_s = max(0.0, float(self.get_parameter("preview_restart_delay_s").value))
+        stagger_s = max(0.0, float(self.get_parameter("preview_start_stagger_s").value))
+
+        if delay_s > 0.0:
+            time.sleep(delay_s)
+
+        if "cam0" in dead:
+            if self._p0 is not None:
+                _stop_proc(self._p0, timeout_s=timeout_s)
+            self._p0 = self._start_preview_proc(cam0, ns0, n0, self._p0_params, "cam0_optical_frame")
+            self.get_logger().info(f"cam0 preview restarted (pid={self._p0.pid})")
+
+        if "cam1" in dead:
+            if stagger_s > 0.0 and self._p0 is not None and self._p0.poll() is None:
+                time.sleep(stagger_s)
+            if self._p1 is not None:
+                _stop_proc(self._p1, timeout_s=timeout_s)
+            self._p1 = self._start_preview_proc(cam1, ns1, n1, self._p1_params, "cam1_optical_frame")
+            self.get_logger().info(f"cam1 preview restarted (pid={self._p1.pid})")
 
     def _stop_previews_managed(self) -> None:
         timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)

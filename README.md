@@ -122,6 +122,18 @@ ros2 launch subsea_bringup rover_app.launch.py \
   ui_fps:=10
 ```
 
+If one preview camera exits with `failed to start camera` / `Broken pipe`, reduce load further:
+
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  capture_mode:=still \
+  preview_width:=480 \
+  preview_height:=270 \
+  preview_fps:=10 \
+  preview_format:=BGR888 \
+  ui_fps:=8
+```
+
 Wiring recommendation:
 - one side of button to `GPIO24`
 - other side to `GND`

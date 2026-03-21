@@ -180,7 +180,7 @@ def generate_launch_description():
             'stream_wait_s': 1.0,
             'stream_initial_wait_s': 2.5,
             'stream_max_frame_age_s': 1.0,
-            'stream_buffer_len': 180,
+            'stream_buffer_len': 60,
             'stream_pair_max_delta_ms': 80.0,
             'write_capture_metadata': True,
             'sensor_buffer_s': 20.0,

@@ -226,7 +226,7 @@ class CaptureService(Node):
         self.declare_parameter("stream_wait_s", 1.0)
         self.declare_parameter("stream_initial_wait_s", 5.0)
         self.declare_parameter("stream_max_frame_age_s", 1.0)
-        self.declare_parameter("stream_buffer_len", 120)
+        self.declare_parameter("stream_buffer_len", 60)
         self.declare_parameter("stream_pair_max_delta_ms", 80.0)
         self.declare_parameter("write_capture_metadata", True)
         self.declare_parameter("sensor_buffer_s", 20.0)
@@ -983,6 +983,90 @@ class CaptureService(Node):
                 best_score = score
         return best
 
+    def _fresh_stream_frames(
+        self,
+        frames: List[StreamFrame],
+        max_age_s: float,
+        now_m: float,
+    ) -> List[StreamFrame]:
+        fresh: List[StreamFrame] = []
+        for frame in frames:
+            _msg, rx_mono, _stamp_ns = frame
+            if (now_m - rx_mono) <= max_age_s:
+                fresh.append(frame)
+        return fresh
+
+    def _pick_stream_frame_pair(
+        self,
+        frames0: List[StreamFrame],
+        frames1: List[StreamFrame],
+        target_ns: int,
+        max_age_s: float,
+        now_m: float,
+        pair_slop_ns: int,
+    ) -> Tuple[Optional[StreamFrame], Optional[StreamFrame], Optional[float], bool]:
+        """Select the best cam0/cam1 pair near target_ns.
+
+        Returns (sel0, sel1, pair_delta_ms, pair_ok). pair_ok is True only when
+        a pair satisfies the pair_slop_ns constraint (or stamps are unavailable).
+        """
+        fresh0 = self._fresh_stream_frames(frames0, max_age_s, now_m)
+        fresh1 = self._fresh_stream_frames(frames1, max_age_s, now_m)
+        if not fresh0 or not fresh1:
+            return None, None, None, False
+
+        best_ok_pair: Optional[Tuple[StreamFrame, StreamFrame, int]] = None
+        best_ok_key: Optional[Tuple[float, int, float]] = None
+        best_any_pair: Optional[Tuple[StreamFrame, StreamFrame, int]] = None
+        best_any_key: Optional[Tuple[float, int, float]] = None
+
+        for f0 in fresh0:
+            st0 = f0[2]
+            if st0 is None:
+                continue
+            age0 = max(0.0, now_m - f0[1])
+            for f1 in fresh1:
+                st1 = f1[2]
+                if st1 is None:
+                    continue
+                age1 = max(0.0, now_m - f1[1])
+                delta_ns = abs(st0 - st1)
+                trigger_err_ns = max(abs(st0 - target_ns), abs(st1 - target_ns))
+                # Prioritize trigger proximity, then tighter pair sync, then fresher pair.
+                key = (float(trigger_err_ns), int(delta_ns), float(age0 + age1))
+
+                if best_any_key is None or key < best_any_key:
+                    best_any_key = key
+                    best_any_pair = (f0, f1, delta_ns)
+                if delta_ns <= pair_slop_ns and (best_ok_key is None or key < best_ok_key):
+                    best_ok_key = key
+                    best_ok_pair = (f0, f1, delta_ns)
+
+        if best_ok_pair is not None:
+            f0, f1, delta_ns = best_ok_pair
+            return f0, f1, float(delta_ns) / 1_000_000.0, True
+
+        if best_any_pair is not None:
+            f0, f1, delta_ns = best_any_pair
+            return f0, f1, float(delta_ns) / 1_000_000.0, False
+
+        # Fallback for streams without valid stamps: pick fresh frames by receive time/age.
+        sel0 = self._pick_stream_frame(fresh0, target_ns, max_age_s, now_m)
+        if sel0 is None:
+            return None, None, None, False
+        target1_ns = sel0[2] if sel0[2] is not None else target_ns
+        sel1 = self._pick_stream_frame(fresh1, target1_ns, max_age_s, now_m)
+        if sel1 is None:
+            return sel0, None, None, False
+
+        pair_ok = True
+        pair_delta_ms: Optional[float] = None
+        if sel0[2] is not None and sel1[2] is not None:
+            pair_delta_ns = abs(sel0[2] - sel1[2])
+            pair_delta_ms = float(pair_delta_ns) / 1_000_000.0
+            pair_ok = pair_delta_ns <= pair_slop_ns
+        return sel0, sel1, pair_delta_ms, pair_ok
+
     def _camera_count_for_capture(self) -> Optional[int]:
         cam_count = _libcamera_camera_count()
         self._detected_cam_count = cam_count
@@ -1727,24 +1811,25 @@ class CaptureService(Node):
         while True:
             buf0, buf1 = self._stream_buffers_snapshot()
             now_m = time.monotonic()
-            sel0 = self._pick_stream_frame(buf0, trigger_ns, max_age_s, now_m)
 
-            sel1 = None
             if require_cam1:
-                target1_ns = trigger_ns
-                if sel0 is not None and sel0[2] is not None:
-                    target1_ns = sel0[2]
-                sel1 = self._pick_stream_frame(buf1, target1_ns, max_age_s, now_m)
-
-            ok0 = sel0 is not None
-            ok1 = (not require_cam1) or (sel1 is not None)
-
-            pair_ok = True
-            pair_delta_ms = None
-            if require_cam1 and sel0 is not None and sel1 is not None and sel0[2] is not None and sel1[2] is not None:
-                pair_delta_ns = abs(sel0[2] - sel1[2])
-                pair_delta_ms = pair_delta_ns / 1_000_000.0
-                pair_ok = pair_delta_ns <= pair_slop_ns
+                sel0, sel1, pair_delta_ms, pair_ok = self._pick_stream_frame_pair(
+                    buf0,
+                    buf1,
+                    trigger_ns,
+                    max_age_s,
+                    now_m,
+                    pair_slop_ns,
+                )
+                ok0 = sel0 is not None
+                ok1 = sel1 is not None
+            else:
+                sel0 = self._pick_stream_frame(buf0, trigger_ns, max_age_s, now_m)
+                sel1 = None
+                ok0 = sel0 is not None
+                ok1 = True
+                pair_ok = True
+                pair_delta_ms = None
 
             if ok0 and ok1 and pair_ok:
                 break

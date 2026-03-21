@@ -616,6 +616,7 @@ class MainWindow(QWidget):
         self._ind_state = {"cam0": None, "cam1": None, "srv": None}
         self._last_capture_event_key: Optional[str] = None
         self._last_capture_debug_key: Optional[str] = None
+        self._preview_render_cache: Dict[str, Tuple[int, int, int]] = {}
 
         # User-settable values (persisted)
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
@@ -1134,26 +1135,33 @@ class MainWindow(QWidget):
         if not sub.got_first_frame():
             label.setText(f"{name}: waiting…")
             info.setText("—")
+            self._preview_render_cache.pop(name, None)
             return
 
         frame, enc, msg_ref = sub.get_latest_snapshot()
         if frame is None:
             label.setText(f"{name}: waiting…")
             info.setText("—")
+            self._preview_render_cache.pop(name, None)
             return
 
         age_s, fps = sub.stream_stats()
         info.setText(f"{fps:4.1f} FPS   |   age {age_s*1000:4.0f} ms")
 
+        target_w = max(2, label.width())
+        target_h = max(2, label.height())
+        frame_key = (id(msg_ref), target_w, target_h)
+        if self._preview_render_cache.get(name) == frame_key:
+            return
+
         # Keep per-frame Python work minimal; do scaling in Qt/C++.
         pix = frame_to_pix(frame, enc)
         _ = msg_ref  # keep backing ROS message alive until pixmap conversion is done
         if not pix.isNull():
-            target_w = max(2, label.width())
-            target_h = max(2, label.height())
             if pix.width() != target_w or pix.height() != target_h:
                 pix = pix.scaled(target_w, target_h, Qt.KeepAspectRatioByExpanding, Qt.FastTransformation)
         label.setPixmap(pix)
+        self._preview_render_cache[name] = frame_key
 
     def _update_indicators(self) -> None:
         def set_ind(key: str, ind: QLabel, ok: bool, warn: bool = False, paused: bool = False):

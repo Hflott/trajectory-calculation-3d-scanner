@@ -110,13 +110,13 @@ def _parse_camera_count(output: str) -> Optional[int]:
         except Exception:
             return None
 
-    if "Available cameras:" in text:
+    if "Available cameras:" in text or "Available cameras" in text:
         lines = text.splitlines()
         count = 0
         start = False
         for line in lines:
             if not start:
-                if "Available cameras:" in line:
+                if "Available cameras" in line:
                     start = True
                 continue
             if re.match(r"^\s*\d+:", line):
@@ -957,8 +957,13 @@ class CaptureService(Node):
                 self.get_logger().warn(
                     "Preview camera nodes exited early. Falling back to black previews."
                 )
-                self._stop_previews_managed()
-                self._start_black_previews(camera_count=0)
+                if bool(self.get_parameter("fallback_black_previews").value):
+                    self._stop_previews_managed()
+                    self._start_black_previews(camera_count=0)
+                else:
+                    self.get_logger().warn(
+                        "fallback_black_previews:=false, leaving preview topics inactive."
+                    )
             elif p0_dead or p1_dead:
                 self.get_logger().warn(
                     "One preview camera node exited early. Continuing with remaining stream."
@@ -975,8 +980,13 @@ class CaptureService(Node):
                 f"Preview camera nodes exited early ({', '.join(dead)}). "
                 "Falling back to black previews."
             )
-            self._stop_previews_managed()
-            self._start_black_previews(camera_count=self._expected_preview_cams)
+            if bool(self.get_parameter("fallback_black_previews").value):
+                self._stop_previews_managed()
+                self._start_black_previews(camera_count=self._expected_preview_cams)
+            else:
+                self.get_logger().warn(
+                    "fallback_black_previews:=false, leaving failed cameras inactive."
+                )
 
     def _stop_previews_managed(self) -> None:
         timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)

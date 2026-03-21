@@ -24,6 +24,7 @@ def generate_launch_description():
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
     start_localization = LaunchConfiguration('start_localization')
+    capture_mode = LaunchConfiguration('capture_mode')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -145,7 +146,7 @@ def generate_launch_description():
         condition=cam_condition_respawn,
     )
 
-    # --- Capture service (12MP stills)
+    # --- Capture service (stream-synced by default; still mode optional)
     capture = Node(
         package='subsea_capture',
         executable='capture_service',
@@ -163,6 +164,18 @@ def generate_launch_description():
             'manage_previews': manage_previews_bool,
             'start_previews': start_cameras_bool,
             'pause_previews': True,
+            'fallback_black_previews': False,
+
+            # Timestamp-accurate capture from live image stream (recommended for
+            # GNSS/IMU motion compensation workflows).
+            'capture_mode': capture_mode,
+            'stream_wait_s': 1.0,
+            'stream_max_frame_age_s': 1.0,
+            'write_capture_metadata': True,
+            'sensor_buffer_s': 20.0,
+            'gnss_fix_topic': '/fix',
+            'gnss_time_ref_topic': '/time_reference',
+            'gnss_imu_topic': '/imu/data',
 
             'preview_width': preview_w,
             'preview_height': preview_h,
@@ -207,6 +220,7 @@ def generate_launch_description():
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
         DeclareLaunchArgument('start_localization', default_value='false'),
+        DeclareLaunchArgument('capture_mode', default_value='stream'),
 
         *env_actions,
 

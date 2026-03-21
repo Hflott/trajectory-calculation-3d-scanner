@@ -80,6 +80,20 @@ Or from main bringup:
 ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 ```
 
+## Capture mode for deblurring
+`subsea_capture` now defaults to `capture_mode:=stream` in rover bringup. This keeps previews running and captures directly from live ROS image streams, preserving frame timestamps for motion-compensation workflows.
+
+For each capture session it writes:
+- `*_cam0.jpg` / `*_cam1.jpg`
+- `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference samples
+
+If you need the old still-capture behavior (`rpicam-still`, with preview pause), override:
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  start_localization:=true \
+  capture_mode:=still
+```
+
 ### PPS note (GPIO23, Raspberry Pi 5)
 `robot_localization` does not configure PPS itself. PPS must be enabled in Linux (`pps-gpio` and time-sync daemon such as `chrony`/`gpsd`) so GNSS/IMU timestamps are accurate before fusion.
 

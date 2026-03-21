@@ -3,7 +3,7 @@
 <package format="3">
   <name>subsea_capture</name>
   <version>0.0.1</version>
-  <description>Dual-camera still capture service using rpicam-still</description>
+  <description>Dual-camera capture service (stream-synced + rpicam-still fallback)</description>
   <maintainer email="subseascanning@todo.todo">subseascanning</maintainer>
   <license>MIT</license>
 
@@ -17,7 +17,11 @@
   <!-- Runtime deps -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
 
   <!-- This marks it as an interface package -->
   <member_of_group>rosidl_interface_packages</member_of_group>
@@ -32,4 +36,3 @@
     <build_type>ament_python</build_type>
   </export>
 </package>
-

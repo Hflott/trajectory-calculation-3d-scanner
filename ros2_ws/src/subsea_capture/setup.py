@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer='subseascanning',
     maintainer_email='',
-    description='Dual-camera still capture service using rpicam-still',
+    description='Dual-camera capture service (stream-synced + rpicam-still fallback)',
     license='MIT',
     entry_points={
         'console_scripts': [

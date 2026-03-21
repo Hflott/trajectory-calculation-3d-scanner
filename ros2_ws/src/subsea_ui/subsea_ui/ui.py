@@ -518,7 +518,7 @@ class MainWindow(QWidget):
         preview_scroll = QScrollArea()
         preview_scroll.setWidgetResizable(True)
         preview_scroll.setWidget(preview_tab)
-        self.tabs.addTab(preview_scroll, "Preview")
+        self._tab_idx_preview = self.tabs.addTab(preview_scroll, "Preview")
 
         # ---- GNSS tab
         gnss_tab = QWidget()
@@ -562,7 +562,7 @@ class MainWindow(QWidget):
 
         gnss_root.insertWidget(0, self.gnss_status)
         gnss_tab.setLayout(gnss_root)
-        self.tabs.addTab(gnss_tab, "GNSS")
+        self._tab_idx_gnss = self.tabs.addTab(gnss_tab, "GNSS")
 
         # ---- Capture tab (scrollable to prevent cut-off)
         cap_row = QHBoxLayout()
@@ -589,7 +589,7 @@ class MainWindow(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(capture_inner)
 
-        self.tabs.addTab(scroll, "Last Capture")
+        self._tab_idx_capture = self.tabs.addTab(scroll, "Last Capture")
 
         # ---- Settings tab
         settings = QWidget()
@@ -655,7 +655,7 @@ class MainWindow(QWidget):
         sroot.addWidget(self.out_dir_apply)
         sroot.addStretch(1)
         settings.setLayout(sroot)
-        self.tabs.addTab(settings, "Settings")
+        self._tab_idx_settings = self.tabs.addTab(settings, "Settings")
 
         # ---- Diagnostics tab
         diag = QWidget()
@@ -670,7 +670,7 @@ class MainWindow(QWidget):
         droot.addWidget(self.log_box, 1)
         droot.addWidget(clear_btn, 0)
         diag.setLayout(droot)
-        self.tabs.addTab(diag, "Diagnostics")
+        self._tab_idx_diag = self.tabs.addTab(diag, "Diagnostics")
 
         outer = QVBoxLayout()
         outer.setContentsMargins(0, 0, 0, 0)
@@ -924,7 +924,7 @@ class MainWindow(QWidget):
             self._res0_pix = self._cap0_pix
             self._res1_pix = self._cap1_pix
             self._apply_capture_pixmaps()
-            self.tabs.setCurrentIndex(1)
+            self.tabs.setCurrentIndex(self._tab_idx_capture)
 
             self.capture_details.setPlainText(
                 "\n".join(
@@ -934,6 +934,7 @@ class MainWindow(QWidget):
                         f"cam1:  {resp.cam1_path}",
                         f"out:   {self.out_dir}",
                         f"q:     {self.jpeg_quality}",
+                        f"msg:   {resp.message}",
                     ]
                 )
             )

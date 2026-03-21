@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
+import json
 import os
 import re
 import time
 import subprocess
 import signal
 import threading
+from collections import deque
 from datetime import datetime
-from typing import List, Tuple, Optional, Callable
+from typing import Any, Deque, Dict, List, Tuple, Optional, Callable
 
+import cv2
 import rclpy
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.node import Node
 from builtin_interfaces.msg import Time as TimeMsg
 
+from cv_bridge import CvBridge
 from ament_index_python.packages import get_package_prefix
 
 from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, NavSatFix, TimeReference, Imu
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 
@@ -152,6 +156,14 @@ def _has_camera_device_hint(devs: List[str]) -> bool:
     return False
 
 
+def _stamp_to_ns(stamp: TimeMsg) -> int:
+    return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+
+
+def _stamp_to_str(stamp: TimeMsg) -> str:
+    return f"{int(stamp.sec)}.{int(stamp.nanosec):09d}"
+
+
 class CaptureService(Node):
     def __init__(self):
         super().__init__("capture_service")
@@ -165,6 +177,11 @@ class CaptureService(Node):
         self.declare_parameter("warmup_ms", 350)
         self.declare_parameter("timeout_ms", 6000)
         self.declare_parameter("default_quality", 95)
+        self.declare_parameter("capture_mode", "stream")  # stream|still
+        self.declare_parameter("stream_wait_s", 1.0)
+        self.declare_parameter("stream_max_frame_age_s", 1.0)
+        self.declare_parameter("write_capture_metadata", True)
+        self.declare_parameter("sensor_buffer_s", 20.0)
 
         # Preview management
         self.declare_parameter("manage_previews", False)
@@ -182,6 +199,9 @@ class CaptureService(Node):
         self.declare_parameter("cam1_namespace", "/cam1")
         self.declare_parameter("cam0_node_name", "camera")
         self.declare_parameter("cam1_node_name", "camera")
+        self.declare_parameter("gnss_fix_topic", "/fix")
+        self.declare_parameter("gnss_time_ref_topic", "/time_reference")
+        self.declare_parameter("gnss_imu_topic", "/imu/data")
 
         # Reliability / timing knobs
         self.declare_parameter("preview_shutdown_timeout_s", 2.5)
@@ -210,6 +230,50 @@ class CaptureService(Node):
         self._fallback_data: Optional[bytes] = None
         self._detected_cam_count: Optional[int] = None
         self._expected_preview_cams: Optional[int] = None
+        self._bridge = CvBridge()
+        self._stream_lock = threading.Lock()
+        self._latest_cam0_msg: Optional[Image] = None
+        self._latest_cam1_msg: Optional[Image] = None
+        self._latest_cam0_rx_mono: Optional[float] = None
+        self._latest_cam1_rx_mono: Optional[float] = None
+
+        self._sensor_lock = threading.Lock()
+        self._buf_fix: Deque[NavSatFix] = deque()
+        self._buf_time_ref: Deque[TimeReference] = deque()
+        self._buf_imu: Deque[Imu] = deque()
+
+        img_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=2,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        sens_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+
+        ns0 = str(self.get_parameter("cam0_namespace").value)
+        ns1 = str(self.get_parameter("cam1_namespace").value)
+        n0 = str(self.get_parameter("cam0_node_name").value)
+        n1 = str(self.get_parameter("cam1_node_name").value)
+        cam0_topic = self._preview_topic(ns0, n0)
+        cam1_topic = self._preview_topic(ns1, n1)
+        self._cam0_sub = self.create_subscription(Image, cam0_topic, self._on_cam0_image, img_qos)
+        self._cam1_sub = self.create_subscription(Image, cam1_topic, self._on_cam1_image, img_qos)
+        self.get_logger().info(f"Stream capture subscribers: cam0={cam0_topic} cam1={cam1_topic}")
+
+        fix_topic = str(self.get_parameter("gnss_fix_topic").value)
+        time_ref_topic = str(self.get_parameter("gnss_time_ref_topic").value)
+        imu_topic = str(self.get_parameter("gnss_imu_topic").value)
+        self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, sens_qos)
+        self._time_ref_sub = self.create_subscription(TimeReference, time_ref_topic, self._on_time_ref, sens_qos)
+        self._imu_sub = self.create_subscription(Imu, imu_topic, self._on_imu, sens_qos)
+        self.get_logger().info(
+            f"Telemetry subscribers: fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic}"
+        )
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
         self.action = ActionServer(
@@ -222,6 +286,7 @@ class CaptureService(Node):
         )
         self.get_logger().info("Capture service ready: /capture_pair")
         self.get_logger().info("Capture action ready: /capture_pair")
+        self.get_logger().info(f"Capture mode: {self._capture_mode()}")
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
             auto_detect = bool(self.get_parameter("auto_detect_cameras").value)
@@ -271,6 +336,200 @@ class CaptureService(Node):
         if node_name:
             return f"/{node_name}/image_raw"
         return "/image_raw"
+
+    def _trim_sensor_buffers_locked(self) -> None:
+        keep_s = float(self.get_parameter("sensor_buffer_s").value)
+        keep_s = max(2.0, keep_s)
+        cutoff_ns = _stamp_to_ns(now_ros_time(self)) - int(keep_s * 1_000_000_000)
+
+        while self._buf_fix and _stamp_to_ns(self._buf_fix[0].header.stamp) < cutoff_ns:
+            self._buf_fix.popleft()
+        while self._buf_time_ref and _stamp_to_ns(self._buf_time_ref[0].header.stamp) < cutoff_ns:
+            self._buf_time_ref.popleft()
+        while self._buf_imu and _stamp_to_ns(self._buf_imu[0].header.stamp) < cutoff_ns:
+            self._buf_imu.popleft()
+
+    def _on_fix(self, msg: NavSatFix) -> None:
+        with self._sensor_lock:
+            self._buf_fix.append(msg)
+            self._trim_sensor_buffers_locked()
+
+    def _on_time_ref(self, msg: TimeReference) -> None:
+        with self._sensor_lock:
+            self._buf_time_ref.append(msg)
+            self._trim_sensor_buffers_locked()
+
+    def _on_imu(self, msg: Imu) -> None:
+        with self._sensor_lock:
+            self._buf_imu.append(msg)
+            self._trim_sensor_buffers_locked()
+
+    def _on_cam0_image(self, msg: Image) -> None:
+        with self._stream_lock:
+            self._latest_cam0_msg = msg
+            self._latest_cam0_rx_mono = time.monotonic()
+
+    def _on_cam1_image(self, msg: Image) -> None:
+        with self._stream_lock:
+            self._latest_cam1_msg = msg
+            self._latest_cam1_rx_mono = time.monotonic()
+
+    def _latest_stream_snapshot(self) -> Tuple[Optional[Image], Optional[Image], Optional[float], Optional[float]]:
+        with self._stream_lock:
+            return (
+                self._latest_cam0_msg,
+                self._latest_cam1_msg,
+                self._latest_cam0_rx_mono,
+                self._latest_cam1_rx_mono,
+            )
+
+    def _capture_mode(self) -> str:
+        mode = str(self.get_parameter("capture_mode").value).strip().lower()
+        if mode not in ("stream", "still"):
+            self.get_logger().warn(f"Unknown capture_mode='{mode}', falling back to 'still'")
+            return "still"
+        return mode
+
+    def _imgmsg_to_bgr(self, msg: Image):
+        enc = (msg.encoding or "").lower()
+        if enc == "bgr8":
+            return self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        if enc == "rgb8":
+            rgb = self._bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8")
+            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        return self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+
+    def _write_jpeg_bgr(self, path: str, frame, quality: int) -> bool:
+        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+        if not ok:
+            return False
+        with open(path, "wb") as f:
+            f.write(buf.tobytes())
+        return True
+
+    def _nearest_fix(self, stamp_ns: int) -> Optional[NavSatFix]:
+        with self._sensor_lock:
+            msgs = list(self._buf_fix)
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
+
+    def _nearest_time_ref(self, stamp_ns: int) -> Optional[TimeReference]:
+        with self._sensor_lock:
+            msgs = list(self._buf_time_ref)
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
+
+    def _nearest_imu(self, stamp_ns: int) -> Optional[Imu]:
+        with self._sensor_lock:
+            msgs = list(self._buf_imu)
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
+
+    def _camera_count_for_capture(self) -> Optional[int]:
+        cam_count = _libcamera_camera_count()
+        self._detected_cam_count = cam_count
+        if cam_count is not None:
+            return cam_count
+
+        # Auto-detect can fail on some systems; infer one-camera setups from stream.
+        c0, c1, _, _ = self._latest_stream_snapshot()
+        if c0 is not None and c1 is None:
+            return 1
+        if c0 is not None and c1 is not None:
+            return 2
+        return None
+
+    def _build_capture_metadata(
+        self,
+        mode: str,
+        session: str,
+        trigger_stamp: TimeMsg,
+        cam0_path: str,
+        cam1_path: str,
+        cam0_stamp: Optional[TimeMsg],
+        cam1_stamp: Optional[TimeMsg],
+    ) -> Dict[str, Any]:
+        trigger_ns = _stamp_to_ns(trigger_stamp)
+        metadata: Dict[str, Any] = {
+            "schema_version": 1,
+            "mode": mode,
+            "session_id": session,
+            "trigger_stamp": _stamp_to_str(trigger_stamp),
+            "cameras": {},
+        }
+
+        def add_camera(name: str, path: str, stamp: Optional[TimeMsg]) -> None:
+            if not path:
+                return
+            info: Dict[str, Any] = {
+                "path": path,
+                "stamp": _stamp_to_str(stamp) if stamp is not None else None,
+            }
+            if stamp is not None:
+                s_ns = _stamp_to_ns(stamp)
+                info["offset_from_trigger_ms"] = (s_ns - trigger_ns) / 1_000_000.0
+
+                fix = self._nearest_fix(s_ns)
+                if fix is not None:
+                    fix_ns = _stamp_to_ns(fix.header.stamp)
+                    info["nearest_fix"] = {
+                        "stamp": _stamp_to_str(fix.header.stamp),
+                        "dt_ms": (fix_ns - s_ns) / 1_000_000.0,
+                        "lat": float(fix.latitude),
+                        "lon": float(fix.longitude),
+                        "alt": float(fix.altitude),
+                        "status": int(fix.status.status),
+                        "service": int(fix.status.service),
+                    }
+
+                tr = self._nearest_time_ref(s_ns)
+                if tr is not None:
+                    tr_ns = _stamp_to_ns(tr.header.stamp)
+                    info["nearest_time_ref"] = {
+                        "stamp": _stamp_to_str(tr.header.stamp),
+                        "time_ref": _stamp_to_str(tr.time_ref),
+                        "source": tr.source or "",
+                        "dt_ms": (tr_ns - s_ns) / 1_000_000.0,
+                    }
+
+                imu = self._nearest_imu(s_ns)
+                if imu is not None:
+                    imu_ns = _stamp_to_ns(imu.header.stamp)
+                    info["nearest_imu"] = {
+                        "stamp": _stamp_to_str(imu.header.stamp),
+                        "dt_ms": (imu_ns - s_ns) / 1_000_000.0,
+                        "angular_velocity": [
+                            float(imu.angular_velocity.x),
+                            float(imu.angular_velocity.y),
+                            float(imu.angular_velocity.z),
+                        ],
+                        "linear_acceleration": [
+                            float(imu.linear_acceleration.x),
+                            float(imu.linear_acceleration.y),
+                            float(imu.linear_acceleration.z),
+                        ],
+                    }
+            metadata["cameras"][name] = info
+
+        add_camera("cam0", cam0_path, cam0_stamp)
+        add_camera("cam1", cam1_path, cam1_stamp)
+        return metadata
+
+    def _write_capture_metadata(
+        self,
+        out_dir: str,
+        session: str,
+        metadata: Dict[str, Any],
+    ) -> str:
+        meta_path = os.path.join(out_dir, f"{session}_meta.json")
+        tmp = meta_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
+        os.replace(tmp, meta_path)
+        return meta_path
 
     def _start_black_previews(self, camera_count: Optional[int] = None) -> None:
         if self._fallback_timer is not None:
@@ -564,7 +823,7 @@ class CaptureService(Node):
             return True, ""
         return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n"
 
-    def _perform_capture(
+    def _perform_capture_still(
         self,
         session_in: str,
         out_dir_in: str,
@@ -682,12 +941,154 @@ class CaptureService(Node):
 
         if not allow_cam1:
             cam1_path = ""
-            msg = "OK (cam1 skipped: only one camera detected)"
+            msg = "OK (still mode, cam1 skipped: only one camera detected)"
         else:
-            msg = "OK"
+            msg = "OK (still mode)"
+
+        if bool(self.get_parameter("write_capture_metadata").value):
+            metadata = self._build_capture_metadata(
+                mode="still",
+                session=session,
+                trigger_stamp=stamp,
+                cam0_path=cam0_path,
+                cam1_path=cam1_path,
+                cam0_stamp=stamp if cam0_path else None,
+                cam1_stamp=stamp if cam1_path else None,
+            )
+            meta_path = self._write_capture_metadata(out_dir, session, metadata)
+            msg = f"{msg}; metadata={meta_path}"
 
         self.get_logger().info("Capture OK")
         return True, msg, cam0_path, cam1_path, stamp
+
+    def _perform_capture_stream(
+        self,
+        session_in: str,
+        out_dir_in: str,
+        quality_in: int,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, str, str, str, TimeMsg]:
+        default_quality = int(self.get_parameter("default_quality").value)
+        quality = int(quality_in) if quality_in > 0 else default_quality
+        quality = max(10, min(100, quality))
+
+        out_dir = out_dir_in.strip() if out_dir_in else ""
+        out_dir = out_dir or os.path.expanduser("~/captures")
+        os.makedirs(out_dir, exist_ok=True)
+
+        session = session_in.strip() if session_in else ""
+        session = session or datetime.now().strftime("%Y%m%d_%H%M%S")
+        cam0_path = os.path.join(out_dir, f"{session}_cam0.jpg")
+        cam1_path = os.path.join(out_dir, f"{session}_cam1.jpg")
+
+        trigger_stamp = now_ros_time(self)
+        self.get_logger().info(f"Capture(stream) session={session} -> {cam0_path}, {cam1_path}")
+
+        if self._fallback_timer is not None:
+            fail_msg = (
+                "CAPTURE FAILED (stream mode): preview fallback is active; "
+                "no verified real camera stream available."
+            )
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, "", "", trigger_stamp
+
+        cam_count = self._camera_count_for_capture()
+        require_cam1 = (cam_count is not None and cam_count >= 2)
+
+        wait_s = max(0.1, float(self.get_parameter("stream_wait_s").value))
+        max_age_s = max(0.05, float(self.get_parameter("stream_max_frame_age_s").value))
+        deadline = time.monotonic() + wait_s
+
+        msg0 = msg1 = None
+        while True:
+            msg0, msg1, rx0, rx1 = self._latest_stream_snapshot()
+            now_m = time.monotonic()
+            age0 = (now_m - rx0) if rx0 is not None else 1e9
+            age1 = (now_m - rx1) if rx1 is not None else 1e9
+
+            ok0 = (msg0 is not None) and (age0 <= max_age_s)
+            ok1 = (not require_cam1) or ((msg1 is not None) and (age1 <= max_age_s))
+            if ok0 and ok1:
+                break
+            if now_m >= deadline:
+                fail_msg = (
+                    "CAPTURE FAILED (stream mode)\n"
+                    f"cam0_ready={ok0} age_s={age0:.3f}\n"
+                    f"cam1_required={require_cam1} cam1_ready={ok1} age_s={age1:.3f}\n"
+                    "No sufficiently fresh preview frames available."
+                )
+                self.get_logger().error(fail_msg)
+                return False, fail_msg, "", "", trigger_stamp
+            time.sleep(0.02)
+
+        if feedback_cb is not None:
+            feedback_cb("encoding_stream_frames")
+
+        try:
+            frame0 = self._imgmsg_to_bgr(msg0)
+        except Exception as e:
+            fail_msg = f"CAPTURE FAILED (stream mode): cam0 conversion failed: {e}"
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, "", "", trigger_stamp
+
+        if not self._write_jpeg_bgr(cam0_path, frame0, quality):
+            fail_msg = "CAPTURE FAILED (stream mode): cam0 JPEG encode/write failed"
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, "", "", trigger_stamp
+
+        cam0_stamp = msg0.header.stamp
+        cam1_stamp: Optional[TimeMsg] = None
+        wrote_cam1 = False
+
+        if msg1 is not None:
+            try:
+                frame1 = self._imgmsg_to_bgr(msg1)
+            except Exception as e:
+                fail_msg = f"CAPTURE FAILED (stream mode): cam1 conversion failed: {e}"
+                self.get_logger().error(fail_msg)
+                return False, fail_msg, cam0_path, "", trigger_stamp
+            if not self._write_jpeg_bgr(cam1_path, frame1, quality):
+                fail_msg = "CAPTURE FAILED (stream mode): cam1 JPEG encode/write failed"
+                self.get_logger().error(fail_msg)
+                return False, fail_msg, cam0_path, "", trigger_stamp
+            cam1_stamp = msg1.header.stamp
+            wrote_cam1 = True
+        else:
+            cam1_path = ""
+
+        stamp = cam0_stamp if cam0_stamp is not None else trigger_stamp
+        if wrote_cam1:
+            msg = "OK (stream mode)"
+        else:
+            msg = "OK (stream mode, cam1 skipped: only one stream detected)"
+
+        if bool(self.get_parameter("write_capture_metadata").value):
+            metadata = self._build_capture_metadata(
+                mode="stream",
+                session=session,
+                trigger_stamp=trigger_stamp,
+                cam0_path=cam0_path,
+                cam1_path=cam1_path,
+                cam0_stamp=cam0_stamp if cam0_stamp is not None else trigger_stamp,
+                cam1_stamp=cam1_stamp,
+            )
+            meta_path = self._write_capture_metadata(out_dir, session, metadata)
+            msg = f"{msg}; metadata={meta_path}"
+
+        self.get_logger().info("Capture OK (stream mode)")
+        return True, msg, cam0_path, cam1_path, stamp
+
+    def _perform_capture(
+        self,
+        session_in: str,
+        out_dir_in: str,
+        quality_in: int,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, str, str, str, TimeMsg]:
+        mode = self._capture_mode()
+        if mode == "stream":
+            return self._perform_capture_stream(session_in, out_dir_in, quality_in, feedback_cb=feedback_cb)
+        return self._perform_capture_still(session_in, out_dir_in, quality_in, feedback_cb=feedback_cb)
 
     def on_capture(self, req: CapturePair.Request, res: CapturePair.Response) -> CapturePair.Response:
         with self._capture_lock:

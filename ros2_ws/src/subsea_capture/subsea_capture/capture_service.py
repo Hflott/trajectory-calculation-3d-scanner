@@ -23,6 +23,7 @@ from ament_index_python.packages import get_package_prefix
 from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
 from sensor_msgs.msg import Image, NavSatFix, TimeReference, Imu
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 
@@ -233,8 +234,7 @@ class CaptureService(Node):
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
         self.declare_parameter("preview_fps", 20)
-        # "auto" lets libcamera/camera_ros choose a stable native stream format.
-        self.declare_parameter("preview_format", "auto")
+        self.declare_parameter("preview_format", "RGB888")
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
@@ -275,6 +275,10 @@ class CaptureService(Node):
         self._p0_params = "/tmp/subsea_cam0_preview_params.yaml"
         self._p1_params = "/tmp/subsea_cam1_preview_params.yaml"
         self._capture_lock = threading.Lock()
+        self._preview_reconfig_lock = threading.Lock()
+        self._preview_reconfig_pending = False
+        self._preview_reconfig_reason = ""
+        self._preview_reconfig_thread: Optional[threading.Thread] = None
 
         self._devs = _dev_paths()
         self._camera_node_exe: Optional[str] = None
@@ -353,6 +357,7 @@ class CaptureService(Node):
         self.get_logger().info("Capture action ready: /capture_pair")
         self.get_logger().info(f"Capture mode: {self._capture_mode()}")
         self._setup_gpio_trigger()
+        self.add_on_set_parameters_callback(self._on_set_parameters)
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
             auto_detect = bool(self.get_parameter("auto_detect_cameras").value)
@@ -388,6 +393,90 @@ class CaptureService(Node):
             self._start_black_previews(camera_count=0)
         else:
             self.get_logger().warn("No cameras detected. Previews disabled.")
+
+    def _on_set_parameters(self, params) -> SetParametersResult:
+        restart_reasons: List[str] = []
+        for p in params:
+            if p.name == "preview_fps":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_fps must be an integer")
+                if v < 1 or v > 120:
+                    return SetParametersResult(successful=False, reason="preview_fps must be in [1,120]")
+                restart_reasons.append(f"preview_fps={v}")
+            elif p.name == "preview_width":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_width must be an integer")
+                if v < 64:
+                    return SetParametersResult(successful=False, reason="preview_width must be >= 64")
+                restart_reasons.append(f"preview_width={v}")
+            elif p.name == "preview_height":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_height must be an integer")
+                if v < 64:
+                    return SetParametersResult(successful=False, reason="preview_height must be >= 64")
+                restart_reasons.append(f"preview_height={v}")
+            elif p.name == "preview_format":
+                restart_reasons.append(f"preview_format={str(p.value)}")
+            elif p.name == "preview_role":
+                restart_reasons.append(f"preview_role={str(p.value)}")
+
+        if restart_reasons:
+            self._request_preview_reconfigure(", ".join(restart_reasons))
+        return SetParametersResult(successful=True, reason="")
+
+    def _request_preview_reconfigure(self, reason: str) -> None:
+        # Only meaningful when this node owns preview processes.
+        if not bool(self.get_parameter("manage_previews").value):
+            return
+        if not bool(self.get_parameter("start_previews").value):
+            return
+
+        with self._preview_reconfig_lock:
+            self._preview_reconfig_pending = True
+            self._preview_reconfig_reason = reason
+            running = (
+                self._preview_reconfig_thread is not None
+                and self._preview_reconfig_thread.is_alive()
+            )
+            if running:
+                return
+            self._preview_reconfig_thread = threading.Thread(
+                target=self._preview_reconfigure_worker,
+                daemon=True,
+            )
+            self._preview_reconfig_thread.start()
+
+    def _preview_reconfigure_worker(self) -> None:
+        # Let parameter update finish before reading new values via get_parameter().
+        time.sleep(0.05)
+        while True:
+            with self._preview_reconfig_lock:
+                if not self._preview_reconfig_pending:
+                    return
+                self._preview_reconfig_pending = False
+                reason = self._preview_reconfig_reason
+
+            try:
+                with self._capture_lock:
+                    if not bool(self.get_parameter("manage_previews").value):
+                        return
+                    if not bool(self.get_parameter("start_previews").value):
+                        return
+                    self.get_logger().info(
+                        f"Applying preview parameter update ({reason}): restarting previews"
+                    )
+                    self._start_previews(camera_count=self._detected_cam_count)
+            except Exception as e:
+                self.get_logger().error(f"Failed to apply preview parameter update: {e}")
+
+            # Coalesce bursts of updates into at most one extra restart.
+            time.sleep(0.05)
 
     def _preview_topic(self, ns: str, node_name: str) -> str:
         ns = (ns or "").strip()

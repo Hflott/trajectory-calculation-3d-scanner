@@ -118,7 +118,7 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_width:=640 \
   preview_height:=360 \
   preview_fps:=12 \
-  preview_format:=auto \
+  preview_format:=RGB888 \
   ui_fps:=10
 ```
 
@@ -130,11 +130,9 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_width:=480 \
   preview_height:=270 \
   preview_fps:=10 \
-  preview_format:=auto \
+  preview_format:=RGB888 \
   ui_fps:=8
 ```
-
-`preview_format:=auto` is recommended on Raspberry Pi 5 dual-camera setups. It avoids forcing RGB conversion in the camera node, which can reduce preview artifacts and CPU load.
 
 Wiring recommendation:
 - one side of button to `GPIO24`

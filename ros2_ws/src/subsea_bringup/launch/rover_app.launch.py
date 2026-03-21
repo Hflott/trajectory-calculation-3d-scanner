@@ -211,6 +211,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'ui_fps': ui_fps_int,
+            'preview_fps': preview_fps_int,
+            'capture_node': '/capture_service',
         }],
     )
 
@@ -243,7 +245,7 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_width', default_value='960'),
         DeclareLaunchArgument('preview_height', default_value='540'),
         DeclareLaunchArgument('preview_fps', default_value='15'),
-        DeclareLaunchArgument('preview_format', default_value='auto'),
+        DeclareLaunchArgument('preview_format', default_value='RGB888'),
         DeclareLaunchArgument('ui_fps', default_value='12'),
 
         *env_actions,

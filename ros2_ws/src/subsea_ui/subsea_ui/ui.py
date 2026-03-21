@@ -358,6 +358,7 @@ class AppNode(Node):
         self.declare_parameter("capture_service", cfg.get("capture_service", "capture_pair"))
         self.declare_parameter("capture_action", cfg.get("capture_action", "capture_pair"))
         self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
+        self.declare_parameter("capture_node", cfg.get("capture_node", "/capture_service"))
         self.declare_parameter("mock_camera_node", cfg.get("mock_camera_node", "/mock_camera_publisher"))
         self.declare_parameter("gnss_fix_topic", cfg.get("gnss_fix_topic", "/fix"))
         self.declare_parameter("gnss_time_ref_topic", cfg.get("gnss_time_ref_topic", "/time_reference"))
@@ -365,6 +366,7 @@ class AppNode(Node):
         self.declare_parameter("output_dir", cfg.get("output_dir", os.path.expanduser("~/captures")))
         self.declare_parameter("jpeg_quality", int(cfg.get("jpeg_quality", 95)))
         self.declare_parameter("ui_fps", int(cfg.get("ui_fps", 15)))
+        self.declare_parameter("preview_fps", int(cfg.get("preview_fps", 15)))
 
         self.cli = self.create_client(CapturePair, str(self.get_parameter("capture_service").value))
         self.action_cli = ActionClient(self, CapturePairAction, str(self.get_parameter("capture_action").value))
@@ -372,6 +374,10 @@ class AppNode(Node):
         self._mock_cam_params = AsyncParameterClient(
             self,
             str(self.get_parameter("mock_camera_node").value),
+        )
+        self._capture_params = AsyncParameterClient(
+            self,
+            str(self.get_parameter("capture_node").value),
         )
 
     def capture_pair_async(self, session_id: str, out_dir: str, quality: int = 95):
@@ -461,6 +467,17 @@ class AppNode(Node):
         params = [Parameter("fps", Parameter.Type.INTEGER, int(max(1, fps)))]
         return self._mock_cam_params.set_parameters(params)
 
+    def set_capture_preview_fps_async(self, fps: int):
+        # Best-effort: if capture node parameter service is unavailable, continue silently.
+        try:
+            ready = self._capture_params.services_are_ready()
+        except Exception:
+            ready = False
+        if not ready:
+            return None
+        params = [Parameter("preview_fps", Parameter.Type.INTEGER, int(max(1, fps)))]
+        return self._capture_params.set_parameters(params)
+
 
 class MainWindow(QWidget):
     def __init__(self, ros_node: AppNode, cam0: ImageSub, cam1: ImageSub, gnss: GnssSub):
@@ -539,6 +556,7 @@ class MainWindow(QWidget):
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
         self.jpeg_quality = int(self.ros_node.get_parameter("jpeg_quality").value)
         self.ui_fps = max(1, int(self.ros_node.get_parameter("ui_fps").value))
+        self.preview_fps = max(1, int(self.ros_node.get_parameter("preview_fps").value))
 
         # ---- Preview tab
         top_row = QHBoxLayout()
@@ -678,6 +696,10 @@ class MainWindow(QWidget):
         self.ui_fps_spin.setRange(5, 60)
         self.ui_fps_spin.setValue(self.ui_fps)
         self.ui_fps_spin.setSingleStep(5)
+        self.preview_fps_spin = QSpinBox()
+        self.preview_fps_spin.setRange(1, 60)
+        self.preview_fps_spin.setValue(self.preview_fps)
+        self.preview_fps_spin.setSingleStep(1)
 
         # Topics are shown (and persisted) but changing them mid-run is risky.
         # Keep them editable but require restart.
@@ -712,6 +734,8 @@ class MainWindow(QWidget):
         sroot.addLayout(row("JPEG quality", self.quality_spin))
         sroot.addWidget(QLabel("UI"))
         sroot.addLayout(row("Preview UI FPS", self.ui_fps_spin))
+        sroot.addWidget(QLabel("Camera"))
+        sroot.addLayout(row("Preview camera FPS", self.preview_fps_spin))
         sroot.addWidget(QLabel("ROS"))
         sroot.addLayout(row("Cam0 topic", self.cam0_topic_edit))
         sroot.addLayout(row("Cam1 topic", self.cam1_topic_edit))
@@ -1021,12 +1045,15 @@ class MainWindow(QWidget):
         self.out_dir = self.out_dir_edit.text().strip() or self.out_dir
         self.jpeg_quality = int(self.quality_spin.value())
         self.ui_fps = max(1, int(self.ui_fps_spin.value()))
+        self.preview_fps = max(1, int(self.preview_fps_spin.value()))
         os.makedirs(self.out_dir, exist_ok=True)
 
         cfg = {
             "output_dir": self.out_dir,
             "jpeg_quality": self.jpeg_quality,
             "ui_fps": self.ui_fps,
+            "preview_fps": self.preview_fps,
+            "capture_node": str(self.ros_node.get_parameter("capture_node").value),
             "cam0_topic": self.cam0_topic_edit.text().strip(),
             "cam1_topic": self.cam1_topic_edit.text().strip(),
             "capture_service": self.srv_name_edit.text().strip(),
@@ -1035,7 +1062,7 @@ class MainWindow(QWidget):
             "gnss_imu_topic": self.gnss_imu_topic_edit.text().strip(),
         }
         save_config(cfg)
-        self.status.setText("Status: settings saved (restart for topic/service changes)")
+        self.status.setText("Status: settings saved")
         self._log("Settings saved")
 
         # Apply UI FPS immediately
@@ -1051,6 +1078,26 @@ class MainWindow(QWidget):
                 except Exception:
                     self._log("Mock camera fps update failed")
             fut.add_done_callback(_done)
+
+        # Update real preview producer FPS (capture_service managed previews).
+        cap_fut = self.ros_node.set_capture_preview_fps_async(self.preview_fps)
+        if cap_fut is not None:
+            def _done_cap(f):
+                try:
+                    r = f.result()
+                    if r and bool(r[0].successful):
+                        self._log(f"Capture preview fps updated to {self.preview_fps}")
+                    else:
+                        reason = ""
+                        if r and len(r) > 0:
+                            reason = str(getattr(r[0], "reason", ""))
+                        self._log(f"Capture preview fps update rejected: {reason or 'unknown reason'}")
+                except Exception as e:
+                    self._log(f"Capture preview fps update failed: {e}")
+
+            cap_fut.add_done_callback(_done_cap)
+        else:
+            self._log("Capture preview fps update skipped (capture node parameter service not ready)")
 
     def _log(self, msg: str) -> None:
         line = f"[{_ts()}] {msg}"

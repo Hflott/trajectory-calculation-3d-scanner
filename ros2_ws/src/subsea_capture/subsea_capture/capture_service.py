@@ -232,7 +232,7 @@ class CaptureService(Node):
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
         self.declare_parameter("preview_fps", 20)
-        self.declare_parameter("preview_format", "BGR888")
+        self.declare_parameter("preview_format", "RGB888")
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
@@ -890,7 +890,7 @@ class CaptureService(Node):
         w = int(self.get_parameter("preview_width").value)
         h = int(self.get_parameter("preview_height").value)
         fps = int(self.get_parameter("preview_fps").value)
-        fmt = str(self.get_parameter("preview_format").value).strip() or "BGR888"
+        fmt = str(self.get_parameter("preview_format").value).strip() or "RGB888"
         role = str(self.get_parameter("preview_role").value)
         frame_us = int(1_000_000 / max(1, fps))
 

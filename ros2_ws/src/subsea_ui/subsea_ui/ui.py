@@ -83,7 +83,8 @@ def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
         fmt = QImage.Format_RGB888
 
     h, w, _ = frame.shape
-    qimg = QImage(frame.data, w, h, frame.strides[0], fmt)
+    # Detach from numpy buffer to avoid artifacts from reused transport buffers.
+    qimg = QImage(frame.data, w, h, frame.strides[0], fmt).copy()
     return QPixmap.fromImage(qimg)
 
 
@@ -189,6 +190,9 @@ class ImageSub(Node):
                 enc = "bgr8"
             except Exception:
                 return
+        else:
+            # Keep a private copy to avoid rendering from a reused shared buffer.
+            frame = frame.copy()
         now_m = time.monotonic()
         with self._lock:
             self._latest = frame

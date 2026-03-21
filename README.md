@@ -118,7 +118,7 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_width:=640 \
   preview_height:=360 \
   preview_fps:=12 \
-  preview_format:=BGR888 \
+  preview_format:=RGB888 \
   ui_fps:=10
 ```
 
@@ -130,7 +130,7 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_width:=480 \
   preview_height:=270 \
   preview_fps:=10 \
-  preview_format:=BGR888 \
+  preview_format:=RGB888 \
   ui_fps:=8
 ```
 

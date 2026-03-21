@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Deque, Dict, List, Tuple, Optional, Callable
 
 import cv2
+import numpy as np
 import rclpy
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
 from rclpy.node import Node
@@ -232,7 +233,8 @@ class CaptureService(Node):
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
         self.declare_parameter("preview_fps", 20)
-        self.declare_parameter("preview_format", "RGB888")
+        # "auto" lets libcamera/camera_ros choose a stable native stream format.
+        self.declare_parameter("preview_format", "auto")
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
@@ -639,12 +641,62 @@ class CaptureService(Node):
         return mode
 
     def _imgmsg_to_bgr(self, msg: Image):
-        enc = (msg.encoding or "").lower()
-        if enc == "bgr8":
-            return self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        if enc == "rgb8":
-            rgb = self._bridge.imgmsg_to_cv2(msg, desired_encoding="rgb8")
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        enc = (msg.encoding or "").lower().strip()
+        w = int(msg.width)
+        h = int(msg.height)
+        step = int(msg.step)
+
+        if w <= 0 or h <= 0:
+            raise ValueError(f"invalid image dimensions: {w}x{h}")
+
+        if step <= 0:
+            if enc in ("bgr8", "rgb8"):
+                step = w * 3
+            elif enc in ("bgra8", "rgba8"):
+                step = w * 4
+            elif enc == "mono8":
+                step = w
+
+        if step > 0 and len(msg.data) < (step * h):
+            raise ValueError(
+                f"truncated image payload: encoding={enc} size={w}x{h} step={step} bytes={len(msg.data)}"
+            )
+
+        try:
+            mv = memoryview(msg.data)
+            if enc in ("bgr8", "rgb8") and step >= (w * 3):
+                frame = np.ndarray(
+                    (h, w, 3),
+                    dtype=np.uint8,
+                    buffer=mv,
+                    strides=(step, 3, 1),
+                )
+                if enc == "rgb8":
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    frame = frame.copy()
+                return frame
+            if enc in ("bgra8", "rgba8") and step >= (w * 4):
+                frame4 = np.ndarray(
+                    (h, w, 4),
+                    dtype=np.uint8,
+                    buffer=mv,
+                    strides=(step, 4, 1),
+                )
+                conv = cv2.COLOR_BGRA2BGR if enc == "bgra8" else cv2.COLOR_RGBA2BGR
+                return cv2.cvtColor(frame4, conv)
+            if enc == "mono8" and step >= w:
+                gray = np.ndarray(
+                    (h, w),
+                    dtype=np.uint8,
+                    buffer=mv,
+                    strides=(step, 1),
+                )
+                return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        except Exception:
+            pass
+
+        # Generic fallback for less common encodings.
         return self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 
     def _write_jpeg_bgr(self, path: str, frame, quality: int) -> bool:
@@ -890,20 +942,23 @@ class CaptureService(Node):
         w = int(self.get_parameter("preview_width").value)
         h = int(self.get_parameter("preview_height").value)
         fps = int(self.get_parameter("preview_fps").value)
-        fmt = str(self.get_parameter("preview_format").value).strip() or "RGB888"
+        fmt = str(self.get_parameter("preview_format").value).strip()
         role = str(self.get_parameter("preview_role").value)
         frame_us = int(1_000_000 / max(1, fps))
 
-        return {
+        params = {
             "camera": int(cam_index),
             "role": role,
             "width": w,
             "height": h,
-            "format": fmt,
             "FrameDurationLimits": [frame_us, frame_us],
             "use_node_time": False,
             "frame_id": frame_id,
         }
+        # Avoid forcing pixel format unless explicitly requested.
+        if fmt and fmt.lower() not in ("auto", "default", "native"):
+            params["format"] = fmt
+        return params
 
     def _preview_env(self) -> dict:
         env = os.environ.copy()

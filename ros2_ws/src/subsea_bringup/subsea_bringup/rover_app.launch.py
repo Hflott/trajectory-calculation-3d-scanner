@@ -243,7 +243,7 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_width', default_value='960'),
         DeclareLaunchArgument('preview_height', default_value='540'),
         DeclareLaunchArgument('preview_fps', default_value='15'),
-        DeclareLaunchArgument('preview_format', default_value='RGB888'),
+        DeclareLaunchArgument('preview_format', default_value='auto'),
         DeclareLaunchArgument('ui_fps', default_value='12'),
 
         *env_actions,

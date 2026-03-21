@@ -157,6 +157,8 @@ class ImageSub(Node):
         self._got_first = False
         self._last_rx_mono: Optional[float] = None
         self._ema_fps: float = 0.0
+        self._seen_encodings: set[str] = set()
+        self._last_bad_frame_warn_mono: float = 0.0
 
         # Depth=1 prevents queue buildup when UI/processing can't keep up.
         qos = QoSProfile(
@@ -168,27 +170,84 @@ class ImageSub(Node):
         self.sub = self.create_subscription(Image, topic, self.cb, qos)
         self.get_logger().info(f"Preview sub: {topic}")
 
+    def _warn_bad_frame(self, msg: Image, reason: str) -> None:
+        now_m = time.monotonic()
+        if (now_m - self._last_bad_frame_warn_mono) < 1.0:
+            return
+        self._last_bad_frame_warn_mono = now_m
+        self.get_logger().warn(
+            f"{self.topic}: dropped frame ({reason}); "
+            f"encoding={msg.encoding} size={msg.width}x{msg.height} step={msg.step} bytes={len(msg.data)}"
+        )
+
     def cb(self, msg: Image):
-        # Fast path: avoid cv_bridge copy/convert when encoding is already usable.
+        # Fast path: avoid cv_bridge copy/convert when encoding is directly usable.
         frame = None
-        enc = (msg.encoding or "").lower()
-        if enc in ("bgr8", "rgb8") and msg.step == msg.width * 3:
-            try:
-                mv = memoryview(msg.data)
+        enc = (msg.encoding or "").lower().strip()
+        if enc not in self._seen_encodings:
+            self._seen_encodings.add(enc)
+            self.get_logger().info(
+                f"Preview stream format on {self.topic}: "
+                f"encoding={enc or 'unknown'} size={msg.width}x{msg.height} step={msg.step}"
+            )
+
+        w = int(msg.width)
+        h = int(msg.height)
+        step = int(msg.step)
+        if w <= 0 or h <= 0:
+            self._warn_bad_frame(msg, "invalid dimensions")
+            return
+
+        if step <= 0:
+            if enc in ("bgr8", "rgb8"):
+                step = w * 3
+            elif enc in ("bgra8", "rgba8"):
+                step = w * 4
+            elif enc == "mono8":
+                step = w
+
+        if step > 0 and len(msg.data) < (step * h):
+            self._warn_bad_frame(msg, "truncated payload")
+            return
+
+        try:
+            mv = memoryview(msg.data)
+            if enc in ("bgr8", "rgb8") and step >= (w * 3):
                 frame = np.ndarray(
-                    (msg.height, msg.width, 3),
+                    (h, w, 3),
                     dtype=np.uint8,
                     buffer=mv,
+                    strides=(step, 3, 1),
                 )
-            except Exception:
-                frame = None
+            elif enc in ("bgra8", "rgba8") and step >= (w * 4):
+                frame4 = np.ndarray(
+                    (h, w, 4),
+                    dtype=np.uint8,
+                    buffer=mv,
+                    strides=(step, 4, 1),
+                )
+                conv = cv2.COLOR_BGRA2BGR if enc == "bgra8" else cv2.COLOR_RGBA2BGR
+                frame = cv2.cvtColor(frame4, conv)
+                enc = "bgr8"
+            elif enc == "mono8" and step >= w:
+                gray = np.ndarray(
+                    (h, w),
+                    dtype=np.uint8,
+                    buffer=mv,
+                    strides=(step, 1),
+                )
+                frame = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+                enc = "bgr8"
+        except Exception:
+            frame = None
 
         if frame is None:
             try:
                 # Fallback: convert to BGR for display.
                 frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
                 enc = "bgr8"
-            except Exception:
+            except Exception as e:
+                self._warn_bad_frame(msg, f"cv_bridge conversion failed: {e}")
                 return
         else:
             # Keep a private copy to avoid rendering from a reused shared buffer.

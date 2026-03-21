@@ -676,7 +676,7 @@ class MainWindow(QWidget):
 
         self._tab_idx_capture = self.tabs.addTab(scroll, "Last Capture")
 
-        # ---- Settings tab
+        # ---- Settings tab (split into sub-tabs + per-page scrolling)
         settings = QWidget()
         sroot = QVBoxLayout()
         sroot.setContentsMargins(10, 10, 10, 10)
@@ -684,7 +684,7 @@ class MainWindow(QWidget):
 
         self.out_dir_edit = QLineEdit(self.out_dir)
         self.out_dir_edit.setPlaceholderText("/path/to/output")
-        self.out_dir_apply = QPushButton("Save")
+        self.out_dir_apply = QPushButton("Save Settings")
         self.out_dir_apply.clicked.connect(self.on_save_settings)
 
         self.quality_spin = QSpinBox()
@@ -724,27 +724,58 @@ class MainWindow(QWidget):
             r = QHBoxLayout()
             r.setSpacing(10)
             l = QLabel(label)
-            l.setMinimumWidth(130)
+            l.setMinimumWidth(150)
             r.addWidget(l)
             r.addWidget(widget, 1)
             return r
 
-        sroot.addWidget(QLabel("Capture"))
-        sroot.addLayout(row("Output directory", self.out_dir_edit))
-        sroot.addLayout(row("JPEG quality", self.quality_spin))
-        sroot.addWidget(QLabel("UI"))
-        sroot.addLayout(row("Preview UI FPS", self.ui_fps_spin))
-        sroot.addWidget(QLabel("Camera"))
-        sroot.addLayout(row("Preview camera FPS", self.preview_fps_spin))
-        sroot.addWidget(QLabel("ROS"))
-        sroot.addLayout(row("Cam0 topic", self.cam0_topic_edit))
-        sroot.addLayout(row("Cam1 topic", self.cam1_topic_edit))
-        sroot.addLayout(row("Capture service", self.srv_name_edit))
-        sroot.addLayout(row("GNSS fix topic", self.gnss_fix_topic_edit))
-        sroot.addLayout(row("GNSS time ref topic", self.gnss_time_ref_topic_edit))
-        sroot.addLayout(row("GNSS IMU topic", self.gnss_imu_topic_edit))
-        sroot.addWidget(self.out_dir_apply)
-        sroot.addStretch(1)
+        def as_scroll(content: QWidget) -> QScrollArea:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(content)
+            return scroll
+
+        settings_tabs = QTabWidget()
+
+        capture_settings_page = QWidget()
+        cap_root = QVBoxLayout()
+        cap_root.setContentsMargins(10, 10, 10, 10)
+        cap_root.setSpacing(10)
+        cap_root.addLayout(row("Output directory", self.out_dir_edit))
+        cap_root.addLayout(row("JPEG quality", self.quality_spin))
+        cap_root.addStretch(1)
+        capture_settings_page.setLayout(cap_root)
+        settings_tabs.addTab(as_scroll(capture_settings_page), "Capture")
+
+        preview_settings_page = QWidget()
+        prev_root = QVBoxLayout()
+        prev_root.setContentsMargins(10, 10, 10, 10)
+        prev_root.setSpacing(10)
+        prev_root.addLayout(row("Preview UI FPS", self.ui_fps_spin))
+        prev_root.addLayout(row("Preview camera FPS", self.preview_fps_spin))
+        prev_root.addStretch(1)
+        preview_settings_page.setLayout(prev_root)
+        settings_tabs.addTab(as_scroll(preview_settings_page), "Preview")
+
+        ros_settings_page = QWidget()
+        ros_root = QVBoxLayout()
+        ros_root.setContentsMargins(10, 10, 10, 10)
+        ros_root.setSpacing(10)
+        ros_note = QLabel("ROS topics/services apply after UI restart.")
+        ros_note.setStyleSheet("color:#B0B0B0;")
+        ros_root.addWidget(ros_note)
+        ros_root.addLayout(row("Cam0 topic", self.cam0_topic_edit))
+        ros_root.addLayout(row("Cam1 topic", self.cam1_topic_edit))
+        ros_root.addLayout(row("Capture service", self.srv_name_edit))
+        ros_root.addLayout(row("GNSS fix topic", self.gnss_fix_topic_edit))
+        ros_root.addLayout(row("GNSS time ref topic", self.gnss_time_ref_topic_edit))
+        ros_root.addLayout(row("GNSS IMU topic", self.gnss_imu_topic_edit))
+        ros_root.addStretch(1)
+        ros_settings_page.setLayout(ros_root)
+        settings_tabs.addTab(as_scroll(ros_settings_page), "ROS")
+
+        sroot.addWidget(settings_tabs, 1)
+        sroot.addWidget(self.out_dir_apply, 0)
         settings.setLayout(sroot)
         self._tab_idx_settings = self.tabs.addTab(settings, "Settings")
 

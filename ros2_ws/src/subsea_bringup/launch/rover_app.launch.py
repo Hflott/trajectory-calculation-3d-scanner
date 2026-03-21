@@ -187,6 +187,7 @@ def generate_launch_description():
             'cam1_namespace': '/cam1',
             'cam0_node_name': 'camera',
             'cam1_node_name': 'camera',
+            'use_local_libcamera_env': False,
         }]
     )
 

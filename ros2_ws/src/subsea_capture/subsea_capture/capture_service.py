@@ -199,6 +199,7 @@ class CaptureService(Node):
         self.declare_parameter("cam1_namespace", "/cam1")
         self.declare_parameter("cam0_node_name", "camera")
         self.declare_parameter("cam1_node_name", "camera")
+        self.declare_parameter("use_local_libcamera_env", False)
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
@@ -658,6 +659,11 @@ class CaptureService(Node):
 
     def _preview_env(self) -> dict:
         env = os.environ.copy()
+        if not bool(self.get_parameter("use_local_libcamera_env").value):
+            # Default to system libcamera. Forcing /usr/local often breaks
+            # camera discovery if stale custom builds are present.
+            return env
+
         local_libs = [
             "/usr/local/lib/aarch64-linux-gnu",
             "/usr/local/lib",

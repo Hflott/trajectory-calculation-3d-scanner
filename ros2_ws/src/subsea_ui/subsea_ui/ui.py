@@ -93,9 +93,8 @@ def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
 def load_jpeg_as_pix(path: str) -> Optional[QPixmap]:
     if not path or not os.path.exists(path):
         return None
-    # Loading 12MP JPEGs at full resolution is expensive on a Pi.
-    # Reduced decode keeps memory + latency under control for UI use.
-    bgr = cv2.imread(path, cv2.IMREAD_REDUCED_COLOR_4)
+    # Quality-first display for Last Capture / Deblurred tabs.
+    bgr = cv2.imread(path, cv2.IMREAD_COLOR)
     if bgr is None:
         return None
     return frame_to_pix(bgr, "bgr8")
@@ -1118,7 +1117,7 @@ class MainWindow(QWidget):
         def setpix(label: QLabel, pix: Optional[QPixmap]):
             if not pix:
                 return
-            label.setPixmap(pix.scaled(label.size(), Qt.KeepAspectRatio, Qt.FastTransformation))
+            label.setPixmap(pix.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
         setpix(self.cap0, self._cap0_pix)
         setpix(self.cap1, self._cap1_pix)

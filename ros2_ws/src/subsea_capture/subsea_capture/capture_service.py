@@ -218,7 +218,7 @@ class CaptureService(Node):
 
         self.declare_parameter("warmup_ms", 350)
         self.declare_parameter("timeout_ms", 6000)
-        self.declare_parameter("default_quality", 95)
+        self.declare_parameter("default_quality", 100)
         self.declare_parameter("capture_mode", "stream")  # stream|still
         self.declare_parameter("stream_wait_s", 1.0)
         self.declare_parameter("stream_initial_wait_s", 5.0)
@@ -1342,7 +1342,6 @@ class CaptureService(Node):
         return [
             "rpicam-still",
             "--nopreview",
-            "--immediate",
             "--camera", str(cam_index),
             "--width", str(width),
             "--height", str(height),

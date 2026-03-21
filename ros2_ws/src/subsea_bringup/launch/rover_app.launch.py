@@ -163,7 +163,7 @@ def generate_launch_description():
             'height': 3040,
             'timeout_ms': 6000,     # give still capture some breathing room
             'warmup_ms': 700,
-            'default_quality': 95,
+            'default_quality': 100,
 
             # Preview pause/resume
             'manage_previews': manage_previews_bool,
@@ -245,7 +245,7 @@ def generate_launch_description():
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
         DeclareLaunchArgument('start_localization', default_value='false'),
-        DeclareLaunchArgument('capture_mode', default_value='stream'),
+        DeclareLaunchArgument('capture_mode', default_value='still'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
         DeclareLaunchArgument('gpio_button_debounce_ms', default_value='40'),

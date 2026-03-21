@@ -150,6 +150,14 @@ install_optional_gui_stack() {
 
 install_camera_stack() {
   log "Installing camera capture prerequisites"
+  # camera_ros from source requires libcamera headers; keep these installed
+  # from the system/Raspberry Pi stack.
+  if apt-cache show libcamera-dev >/dev/null 2>&1; then
+    apt_install libcamera-dev
+  else
+    warn "libcamera-dev not found in apt repositories; camera_ros source build may fail."
+  fi
+
   if is_raspberry_pi; then
     log "Raspberry Pi detected: skipping apt camera_ros (workspace build recommended)."
   elif apt-cache show "ros-${ROS_DISTRO}-camera-ros" >/dev/null 2>&1; then

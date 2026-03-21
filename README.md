@@ -169,9 +169,11 @@ If it points to `/opt/ros/jazzy/.../libcamera.so`, switch to Raspberry Pi/system
 
 ```bash
 sudo apt-get remove -y "ros-jazzy-libcamera*"
+sudo apt-get install -y libcamera-dev
 cd ~/trajectory-calculation-3d-scanner/ros2_ws
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y --skip-keys "ament_python libcamera"
+rm -rf build/camera_ros install/camera_ros
 colcon build --symlink-install --packages-select camera_ros subsea_capture subsea_bringup subsea_ui
 source install/setup.bash
 ```

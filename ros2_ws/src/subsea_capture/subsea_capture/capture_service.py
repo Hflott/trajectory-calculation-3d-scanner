@@ -259,6 +259,7 @@ class CaptureService(Node):
         self.declare_parameter("odom_local_topic", "/odometry/local")
         self.declare_parameter("odom_global_topic", "/odometry/global")
         self.declare_parameter("capture_event_topic", "/capture/events")
+        self.declare_parameter("capture_debug_topic", "/capture/debug")
         self.declare_parameter("gpio_trigger_enable", False)
         self.declare_parameter("gpio_trigger_chip", "/dev/gpiochip0")
         self.declare_parameter("gpio_trigger_line", 24)
@@ -369,6 +370,9 @@ class CaptureService(Node):
         event_topic = str(self.get_parameter("capture_event_topic").value)
         self._capture_evt_pub = self.create_publisher(String, event_topic, 10)
         self.get_logger().info(f"Capture event publisher: {event_topic}")
+        debug_topic = str(self.get_parameter("capture_debug_topic").value)
+        self._capture_dbg_pub = self.create_publisher(String, debug_topic, 10)
+        self.get_logger().info(f"Capture debug publisher: {debug_topic}")
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
         self.action = ActionServer(
@@ -723,6 +727,14 @@ class CaptureService(Node):
             self._capture_evt_pub.publish(msg)
         except Exception as e:
             self.get_logger().warn(f"Failed to publish capture event: {e}")
+
+    def _publish_capture_debug(self, payload: Dict[str, Any]) -> None:
+        try:
+            msg = String()
+            msg.data = json.dumps(payload, separators=(",", ":"))
+            self._capture_dbg_pub.publish(msg)
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish capture debug: {e}")
 
     def _cleanup_gpio_trigger(self) -> None:
         if self._gpio_timer is not None:
@@ -1751,6 +1763,24 @@ class CaptureService(Node):
                     "No sufficiently fresh preview frames available."
                 )
                 self.get_logger().error(fail_msg)
+                self._publish_capture_debug(
+                    {
+                        "status": "failed_select",
+                        "mode": "stream",
+                        "session_id": session,
+                        "trigger_stamp": _stamp_to_str(trigger_stamp),
+                        "require_cam1": bool(require_cam1),
+                        "cam0_ready": bool(ok0),
+                        "cam1_ready": bool(ok1),
+                        "cam0_age_ms": float(age0 * 1000.0),
+                        "cam1_age_ms": float(age1 * 1000.0),
+                        "pair_delta_ms": pair_delta_ms,
+                        "pair_limit_ms": float(pair_slop_ns / 1_000_000.0),
+                        "cam0_buffer_len": int(len(buf0)),
+                        "cam1_buffer_len": int(len(buf1)),
+                        "message": fail_msg,
+                    }
+                )
                 return False, fail_msg, "", "", trigger_stamp
             time.sleep(0.01)
 
@@ -1773,6 +1803,32 @@ class CaptureService(Node):
                 self.get_logger().info(
                     f"Stream frame selected: cam0_age_ms={age0*1000.0:.1f}"
                 )
+                age1 = None
+
+        cam0_stamp_ns = self._msg_stamp_ns(msg0)
+        cam1_stamp_ns = self._msg_stamp_ns(msg1) if msg1 is not None else None
+        trigger_ns = _stamp_to_ns(trigger_stamp)
+        cam0_offset_ms = ((cam0_stamp_ns - trigger_ns) / 1_000_000.0) if cam0_stamp_ns is not None else None
+        cam1_offset_ms = ((cam1_stamp_ns - trigger_ns) / 1_000_000.0) if cam1_stamp_ns is not None else None
+        self._publish_capture_debug(
+            {
+                "status": "selected",
+                "mode": "stream",
+                "session_id": session,
+                "trigger_stamp": _stamp_to_str(trigger_stamp),
+                "cam0_stamp": _stamp_to_str(msg0.header.stamp),
+                "cam1_stamp": _stamp_to_str(msg1.header.stamp) if msg1 is not None else None,
+                "cam0_offset_ms": cam0_offset_ms,
+                "cam1_offset_ms": cam1_offset_ms,
+                "cam0_age_ms": float(age0 * 1000.0),
+                "cam1_age_ms": (float(age1 * 1000.0) if age1 is not None else None),
+                "pair_delta_ms": pair_delta_ms,
+                "pair_limit_ms": float(pair_slop_ns / 1_000_000.0),
+                "require_cam1": bool(require_cam1),
+                "cam0_buffer_len": int(len(buf0)),
+                "cam1_buffer_len": int(len(buf1)),
+            }
+        )
 
         if feedback_cb is not None:
             feedback_cb("encoding_stream_frames")
@@ -1782,11 +1838,29 @@ class CaptureService(Node):
         except Exception as e:
             fail_msg = f"CAPTURE FAILED (stream mode): cam0 conversion failed: {e}"
             self.get_logger().error(fail_msg)
+            self._publish_capture_debug(
+                {
+                    "status": "failed_encode",
+                    "mode": "stream",
+                    "session_id": session,
+                    "trigger_stamp": _stamp_to_str(trigger_stamp),
+                    "message": fail_msg,
+                }
+            )
             return False, fail_msg, "", "", trigger_stamp
 
         if not self._write_jpeg_bgr(cam0_path, frame0, quality):
             fail_msg = "CAPTURE FAILED (stream mode): cam0 JPEG encode/write failed"
             self.get_logger().error(fail_msg)
+            self._publish_capture_debug(
+                {
+                    "status": "failed_encode",
+                    "mode": "stream",
+                    "session_id": session,
+                    "trigger_stamp": _stamp_to_str(trigger_stamp),
+                    "message": fail_msg,
+                }
+            )
             return False, fail_msg, "", "", trigger_stamp
 
         cam0_stamp = msg0.header.stamp
@@ -1799,10 +1873,28 @@ class CaptureService(Node):
             except Exception as e:
                 fail_msg = f"CAPTURE FAILED (stream mode): cam1 conversion failed: {e}"
                 self.get_logger().error(fail_msg)
+                self._publish_capture_debug(
+                    {
+                        "status": "failed_encode",
+                        "mode": "stream",
+                        "session_id": session,
+                        "trigger_stamp": _stamp_to_str(trigger_stamp),
+                        "message": fail_msg,
+                    }
+                )
                 return False, fail_msg, cam0_path, "", trigger_stamp
             if not self._write_jpeg_bgr(cam1_path, frame1, quality):
                 fail_msg = "CAPTURE FAILED (stream mode): cam1 JPEG encode/write failed"
                 self.get_logger().error(fail_msg)
+                self._publish_capture_debug(
+                    {
+                        "status": "failed_encode",
+                        "mode": "stream",
+                        "session_id": session,
+                        "trigger_stamp": _stamp_to_str(trigger_stamp),
+                        "message": fail_msg,
+                    }
+                )
                 return False, fail_msg, cam0_path, "", trigger_stamp
             cam1_stamp = msg1.header.stamp
             wrote_cam1 = True

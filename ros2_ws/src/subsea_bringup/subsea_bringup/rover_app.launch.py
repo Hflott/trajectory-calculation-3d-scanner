@@ -35,6 +35,7 @@ def generate_launch_description():
     ui_fps = LaunchConfiguration('ui_fps')
     odom_local_topic = LaunchConfiguration('odom_local_topic')
     odom_global_topic = LaunchConfiguration('odom_global_topic')
+    capture_debug_topic = LaunchConfiguration('capture_debug_topic')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -184,6 +185,7 @@ def generate_launch_description():
             'write_capture_metadata': True,
             'sensor_buffer_s': 20.0,
             'capture_event_topic': '/capture/events',
+            'capture_debug_topic': capture_debug_topic,
             'gnss_fix_topic': '/fix',
             'gnss_time_ref_topic': '/time_reference',
             'gnss_imu_topic': '/imu/data',
@@ -229,6 +231,7 @@ def generate_launch_description():
             'preview_fps': preview_fps_int,
             'capture_node': '/capture_service',
             'capture_event_topic': '/capture/events',
+            'capture_debug_topic': capture_debug_topic,
         }],
     )
 
@@ -266,6 +269,7 @@ def generate_launch_description():
         DeclareLaunchArgument('ui_fps', default_value='12'),
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
         DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),
+        DeclareLaunchArgument('capture_debug_topic', default_value='/capture/debug'),
 
         *env_actions,
 

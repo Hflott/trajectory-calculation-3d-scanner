@@ -361,6 +361,7 @@ class AppNode(Node):
         self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
         self.declare_parameter("capture_node", cfg.get("capture_node", "/capture_service"))
         self.declare_parameter("capture_event_topic", cfg.get("capture_event_topic", "/capture/events"))
+        self.declare_parameter("capture_debug_topic", cfg.get("capture_debug_topic", "/capture/debug"))
         self.declare_parameter("mock_camera_node", cfg.get("mock_camera_node", "/mock_camera_publisher"))
         self.declare_parameter("gnss_fix_topic", cfg.get("gnss_fix_topic", "/fix"))
         self.declare_parameter("gnss_time_ref_topic", cfg.get("gnss_time_ref_topic", "/time_reference"))
@@ -383,6 +384,8 @@ class AppNode(Node):
         )
         self._capture_event_lock = threading.Lock()
         self._capture_events: Deque[Dict[str, Any]] = deque(maxlen=64)
+        self._capture_debug_lock = threading.Lock()
+        self._capture_debug_events: Deque[Dict[str, Any]] = deque(maxlen=128)
         evt_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=20,
@@ -392,6 +395,9 @@ class AppNode(Node):
         evt_topic = str(self.get_parameter("capture_event_topic").value)
         self._capture_evt_sub = self.create_subscription(String, evt_topic, self._on_capture_event, evt_qos)
         self.get_logger().info(f"Capture event sub: {evt_topic}")
+        dbg_topic = str(self.get_parameter("capture_debug_topic").value)
+        self._capture_dbg_sub = self.create_subscription(String, dbg_topic, self._on_capture_debug, evt_qos)
+        self.get_logger().info(f"Capture debug sub: {dbg_topic}")
 
     def _on_capture_event(self, msg: String) -> None:
         try:
@@ -409,6 +415,24 @@ class AppNode(Node):
                 return []
             out = list(self._capture_events)
             self._capture_events.clear()
+            return out
+
+    def _on_capture_debug(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        with self._capture_debug_lock:
+            self._capture_debug_events.append(payload)
+
+    def pop_capture_debug_events(self) -> List[Dict[str, Any]]:
+        with self._capture_debug_lock:
+            if not self._capture_debug_events:
+                return []
+            out = list(self._capture_debug_events)
+            self._capture_debug_events.clear()
             return out
 
     def capture_pair_async(self, session_id: str, out_dir: str, quality: int = 95):
@@ -550,6 +574,9 @@ class MainWindow(QWidget):
         self.capture_log = QPlainTextEdit()
         self.capture_log.setReadOnly(True)
         self.capture_log.setMaximumBlockCount(2000)
+        self.capture_debug = QPlainTextEdit()
+        self.capture_debug.setReadOnly(True)
+        self.capture_debug.setMaximumBlockCount(800)
 
         for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
             lab.setAlignment(Qt.AlignCenter)
@@ -582,6 +609,7 @@ class MainWindow(QWidget):
         self._preview_paused: bool = False
         self._ind_state = {"cam0": None, "cam1": None, "srv": None}
         self._last_capture_event_key: Optional[str] = None
+        self._last_capture_debug_key: Optional[str] = None
 
         # User-settable values (persisted)
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
@@ -698,6 +726,8 @@ class MainWindow(QWidget):
         details_layout.setSpacing(8)
         details_layout.addWidget(QLabel("Last capture details"), 0)
         details_layout.addWidget(self.capture_details, 1)
+        details_layout.addWidget(QLabel("Capture debug (live)"), 0)
+        details_layout.addWidget(self.capture_debug, 1)
         details_layout.addWidget(QLabel("Capture event log"), 0)
         details_layout.addWidget(self.capture_log, 1)
         details_page.setLayout(details_layout)
@@ -901,6 +931,7 @@ class MainWindow(QWidget):
             self._render_preview(self.prev0, self.prev0_info, self.cam0, "Cam0")
             self._render_preview(self.prev1, self.prev1_info, self.cam1, "Cam1")
         self._consume_capture_events()
+        self._consume_capture_debug_events()
         self._refresh_gnss()
 
     def _consume_capture_events(self) -> None:
@@ -1010,6 +1041,36 @@ class MainWindow(QWidget):
             f"msg={message}\n"
         )
         self.capture_log.appendPlainText(summary)
+
+    def _consume_capture_debug_events(self) -> None:
+        events = self.ros_node.pop_capture_debug_events()
+        if not events:
+            return
+
+        for ev in events:
+            session = str(ev.get("session_id", ""))
+            status = str(ev.get("status", ""))
+            trigger = str(ev.get("trigger_stamp", ""))
+            msg = str(ev.get("message", ""))
+            key = f"{session}|{status}|{trigger}|{msg}"
+            if self._last_capture_debug_key == key:
+                continue
+            self._last_capture_debug_key = key
+
+            try:
+                pretty = json.dumps(ev, indent=2, sort_keys=True)
+            except Exception:
+                pretty = str(ev)
+            self.capture_debug.setPlainText(pretty)
+
+            pair_ms = ev.get("pair_delta_ms")
+            cam0_age_ms = ev.get("cam0_age_ms")
+            cam1_age_ms = ev.get("cam1_age_ms")
+            self._log(
+                "Capture debug: "
+                f"status={status} session={session} "
+                f"pair_ms={pair_ms} cam0_age_ms={cam0_age_ms} cam1_age_ms={cam1_age_ms}"
+            )
 
     def _refresh_gnss(self) -> None:
         fix, time_ref, imu, fix_rx, time_rx, imu_rx = self.gnss.snapshot()

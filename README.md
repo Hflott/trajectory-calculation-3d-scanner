@@ -87,6 +87,8 @@ For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
 - `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
 
+Live stream-capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
+
 If you need the old still-capture behavior (`rpicam-still`, with preview pause), override:
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \

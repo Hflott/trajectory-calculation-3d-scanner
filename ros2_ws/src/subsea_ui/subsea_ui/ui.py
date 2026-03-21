@@ -548,6 +548,9 @@ class MainWindow(QWidget):
         self.capture_details = QPlainTextEdit()
         self.capture_details.setReadOnly(True)
         self.capture_details.setMaximumBlockCount(2000)
+        self.capture_log = QPlainTextEdit()
+        self.capture_log.setReadOnly(True)
+        self.capture_log.setMaximumBlockCount(2000)
 
         for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
             lab.setAlignment(Qt.AlignCenter)
@@ -558,6 +561,11 @@ class MainWindow(QWidget):
             info.setStyleSheet("color:#B0B0B0; padding:4px 2px;")
 
         # --- Actions
+        self.full_btn = QPushButton("Toggle Fullscreen")
+        self.full_btn.setMinimumHeight(34)
+        self.full_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
+        self.full_btn.clicked.connect(self.toggle_fullscreen)
+
         self.quit_btn = QPushButton("Quit")
         self.quit_btn.setMinimumHeight(34)
         self.quit_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
@@ -589,6 +597,7 @@ class MainWindow(QWidget):
         top_row.addWidget(self.ind_cam1)
         top_row.addWidget(self.ind_srv)
         top_row.addStretch(1)
+        top_row.addWidget(self.full_btn, 0, Qt.AlignRight)
         top_row.addWidget(self.quit_btn, 0, Qt.AlignRight)
 
         preview_row = QHBoxLayout()
@@ -667,25 +676,43 @@ class MainWindow(QWidget):
         gnss_tab.setLayout(gnss_root)
         self._tab_idx_gnss = self.tabs.addTab(gnss_tab, "GNSS")
 
-        # ---- Capture tab (scrollable to prevent cut-off)
+        # ---- Capture tab (nested tabs for larger image views)
+        cap_page = QWidget()
         cap_row = QHBoxLayout()
+        cap_row.setContentsMargins(10, 10, 10, 10)
         cap_row.setSpacing(10)
         cap_row.addWidget(self.cap0, 1)
         cap_row.addWidget(self.cap1, 1)
+        cap_page.setLayout(cap_row)
 
+        deblur_page = QWidget()
         res_row = QHBoxLayout()
+        res_row.setContentsMargins(10, 10, 10, 10)
         res_row.setSpacing(10)
         res_row.addWidget(self.res0, 1)
         res_row.addWidget(self.res1, 1)
+        deblur_page.setLayout(res_row)
+
+        details_page = QWidget()
+        details_layout = QVBoxLayout()
+        details_layout.setContentsMargins(10, 10, 10, 10)
+        details_layout.setSpacing(8)
+        details_layout.addWidget(QLabel("Last capture details"), 0)
+        details_layout.addWidget(self.capture_details, 1)
+        details_layout.addWidget(QLabel("Capture event log"), 0)
+        details_layout.addWidget(self.capture_log, 1)
+        details_page.setLayout(details_layout)
+
+        capture_tabs = QTabWidget()
+        capture_tabs.addTab(cap_page, "Last Capture")
+        capture_tabs.addTab(deblur_page, "Deblurred")
+        capture_tabs.addTab(details_page, "Details / Log")
 
         capture_inner = QWidget()
         capture_layout = QVBoxLayout()
         capture_layout.setContentsMargins(10, 10, 10, 10)
         capture_layout.setSpacing(10)
-        capture_layout.addLayout(cap_row, 1)
-        capture_layout.addLayout(res_row, 1)
-        capture_layout.addWidget(QLabel("Details"), 0)
-        capture_layout.addWidget(self.capture_details, 0)
+        capture_layout.addWidget(capture_tabs, 1)
         capture_inner.setLayout(capture_layout)
 
         scroll = QScrollArea()
@@ -845,10 +872,18 @@ class MainWindow(QWidget):
     def _apply_compact_mode_if_small(self, screen_w: int, screen_h: int):
         if screen_h > 650 and screen_w > 1100:
             return
+        self.full_btn.setMinimumHeight(30)
+        self.full_btn.setStyleSheet("font-size:13px; padding:2px 8px;")
         self.quit_btn.setMinimumHeight(30)
         self.quit_btn.setStyleSheet("font-size:13px; padding:2px 8px;")
         for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
             lab.setMinimumSize(110, 70)
+
+    def toggle_fullscreen(self):
+        if self.windowState() & Qt.WindowFullScreen:
+            self.setWindowState(self.windowState() & ~Qt.WindowFullScreen)
+        else:
+            self.setWindowState(self.windowState() | Qt.WindowFullScreen)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -902,6 +937,16 @@ class MainWindow(QWidget):
             if success:
                 self.status.setText("Status: GPIO capture OK")
                 self._log(f"GPIO capture OK: session={session} cam0={cam0_path} cam1={cam1_path}")
+                self._append_capture_log(
+                    source="gpio",
+                    session=session,
+                    success=True,
+                    message=message,
+                    cam0_path=cam0_path,
+                    cam1_path=cam1_path,
+                    sec=sec,
+                    nsec=nsec,
+                )
                 self._cap0_pix = load_jpeg_as_pix(cam0_path)
                 self._cap1_pix = load_jpeg_as_pix(cam1_path)
                 self._res0_pix = self._cap0_pix
@@ -922,6 +967,16 @@ class MainWindow(QWidget):
             else:
                 self.status.setText("Status: GPIO capture FAILED (see details)")
                 self._log(f"GPIO capture failed: session={session} msg={message}")
+                self._append_capture_log(
+                    source="gpio",
+                    session=session,
+                    success=False,
+                    message=message,
+                    cam0_path=cam0_path,
+                    cam1_path=cam1_path,
+                    sec=sec,
+                    nsec=nsec,
+                )
                 self.cap0.setText(message[:800])
                 self.cap1.setText(message[:800])
                 self.capture_details.setPlainText(
@@ -935,6 +990,27 @@ class MainWindow(QWidget):
                         ]
                     )
                 )
+
+    def _append_capture_log(
+        self,
+        source: str,
+        session: str,
+        success: bool,
+        message: str,
+        cam0_path: str,
+        cam1_path: str,
+        sec: int,
+        nsec: int,
+    ) -> None:
+        status = "OK" if success else "FAILED"
+        summary = (
+            f"[{_ts()}] {source.upper()} {status} "
+            f"session={session} stamp={sec}.{nsec:09d}\n"
+            f"cam0={cam0_path}\n"
+            f"cam1={cam1_path}\n"
+            f"msg={message}\n"
+        )
+        self.capture_log.appendPlainText(summary)
 
     def _refresh_gnss(self) -> None:
         fix, time_ref, imu, fix_rx, time_rx, imu_rx = self.gnss.snapshot()

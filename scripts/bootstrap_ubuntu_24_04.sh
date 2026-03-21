@@ -11,7 +11,7 @@ WS_DIR="${REPO_ROOT}/ros2_ws"
 INSTALL_NOVNC=0
 SKIP_BUILD=0
 AUTO_CONFIG_RPI=1
-PPS_GPIO_PIN=23
+PPS_GPIO_PIN=11
 
 log() {
   echo
@@ -37,7 +37,7 @@ Options:
   --with-novnc   Also install Xvfb/fluxbox/x11vnc/noVNC for browser-based GUI
   --skip-build   Install dependencies only (skip rosdep+colcon build)
   --no-rpi-autoconfig  Skip Raspberry Pi accessory auto-configuration
-  --pps-gpio-pin N     GPIO pin for PPS overlay (default: 23)
+  --pps-gpio-pin N     GPIO pin for PPS overlay (default: 11)
   -h, --help     Show this help
 EOF
 }
@@ -250,6 +250,8 @@ configure_rpi_boot_overlays() {
   log "Configuring Raspberry Pi boot overlays in ${cfg}"
   ensure_line_in_file "enable_uart=1" "${cfg}"
   ensure_line_in_file "dtparam=i2c_arm=on" "${cfg}"
+  # Keep only one PPS overlay so pin updates do not leave stale entries behind.
+  run_root sed -i '/^[[:space:]]*dtoverlay=pps-gpio/d' "${cfg}"
   ensure_line_in_file "dtoverlay=pps-gpio,gpiopin=${PPS_GPIO_PIN}" "${cfg}"
 }
 

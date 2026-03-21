@@ -40,7 +40,7 @@ cd trajectory-calculation-3d-scanner
 
 On Raspberry Pi, the bootstrap also auto-configures common accessories for your stack:
 - Enables `UART` + `I2C`
-- Adds PPS overlay (`dtoverlay=pps-gpio,gpiopin=23` by default)
+- Adds PPS overlay (`dtoverlay=pps-gpio,gpiopin=11` by default)
 - Installs/configures `gpsd` + `chrony` + `pps-tools`
 - Attempts to auto-detect GNSS serial device (`/dev/serial/by-id/*`, then common `/dev/tty*` fallbacks)
 
@@ -54,7 +54,7 @@ Optional: install a browser-based GUI stack (Xvfb + noVNC) for headless systems:
 
 Optional Pi flags:
 ```bash
-./scripts/bootstrap_ubuntu_24_04.sh --pps-gpio-pin 23
+./scripts/bootstrap_ubuntu_24_04.sh --pps-gpio-pin 11
 ./scripts/bootstrap_ubuntu_24_04.sh --no-rpi-autoconfig
 ```
 
@@ -159,7 +159,7 @@ ros2 launch subsea_bringup rover_app.launch.py \
 Wiring recommendation:
 - one side of button to `GPIO24`
 - other side to `GND`
-- keep `GPIO23` reserved for PPS if you use GNSS PPS there
+- keep `GPIO11` reserved for PPS if you use GNSS PPS there
 
 If you see:
 - `python gpiod import failed`: install `python3-libgpiod`
@@ -171,7 +171,7 @@ sudo usermod -aG gpio $USER
 newgrp gpio
 ```
 
-### PPS note (GPIO23, Raspberry Pi 5)
+### PPS note (GPIO11, Raspberry Pi 5)
 `robot_localization` does not configure PPS itself. PPS must be enabled in Linux (`pps-gpio` and time-sync daemon such as `chrony`/`gpsd`) so GNSS/IMU timestamps are accurate before fusion.
 
 ## Manual commands (if needed)

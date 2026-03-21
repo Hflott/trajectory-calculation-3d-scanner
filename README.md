@@ -83,6 +83,12 @@ ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 ## Capture mode for deblurring
 `subsea_capture` now defaults to `capture_mode:=stream` in rover bringup. This keeps previews running and captures directly from live ROS image streams, preserving frame timestamps for motion-compensation workflows.
 
+Bringup now uses split topics by default:
+- capture stream input: `/cam0/camera/image_raw`, `/cam1/camera/image_raw`
+- UI preview relay output: `/cam0/preview/image_raw`, `/cam1/preview/image_raw`
+
+This allows lower-load UI preview (`preview_ui_*`) without reducing capture-stream quality (`preview_*`).
+
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
 - `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
@@ -114,16 +120,28 @@ ros2 launch subsea_bringup rover_app.launch.py \
   gpio_button_pin:=24
 ```
 
-If preview is laggy on Raspberry Pi, lower preview load:
+If preview is laggy on Raspberry Pi, lower **UI preview relay** load first:
 
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
   capture_mode:=stream \
-  preview_width:=640 \
-  preview_height:=360 \
-  preview_fps:=12 \
-  preview_format:=RGB888 \
+  preview_ui_width:=640 \
+  preview_ui_height:=360 \
+  preview_ui_fps:=10 \
   ui_fps:=10
+```
+
+If you need sharper stream captures for deblurring, keep/increase capture stream settings separately:
+
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  capture_mode:=stream \
+  preview_width:=1280 \
+  preview_height:=720 \
+  preview_fps:=12 \
+  preview_ui_width:=640 \
+  preview_ui_height:=360 \
+  preview_ui_fps:=10
 ```
 
 If one preview camera exits with `failed to start camera` / `Broken pipe`, reduce load further:

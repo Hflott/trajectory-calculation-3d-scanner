@@ -354,8 +354,8 @@ class AppNode(Node):
         super().__init__("subsea_ui_node")
 
         # Parameters (overridable via --ros-args -p name:=value)
-        self.declare_parameter("cam0_topic", cfg.get("cam0_topic", "/cam0/camera/image_raw"))
-        self.declare_parameter("cam1_topic", cfg.get("cam1_topic", "/cam1/camera/image_raw"))
+        self.declare_parameter("cam0_topic", cfg.get("cam0_topic", "/cam0/preview/image_raw"))
+        self.declare_parameter("cam1_topic", cfg.get("cam1_topic", "/cam1/preview/image_raw"))
         self.declare_parameter("capture_service", cfg.get("capture_service", "capture_pair"))
         self.declare_parameter("capture_action", cfg.get("capture_action", "capture_pair"))
         self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
@@ -370,6 +370,7 @@ class AppNode(Node):
         self.declare_parameter("jpeg_quality", int(cfg.get("jpeg_quality", 95)))
         self.declare_parameter("ui_fps", int(cfg.get("ui_fps", 15)))
         self.declare_parameter("preview_fps", int(cfg.get("preview_fps", 15)))
+        self.declare_parameter("preview_relay_fps", int(cfg.get("preview_relay_fps", 10)))
 
         self.cli = self.create_client(CapturePair, str(self.get_parameter("capture_service").value))
         self.action_cli = ActionClient(self, CapturePairAction, str(self.get_parameter("capture_action").value))
@@ -533,6 +534,17 @@ class AppNode(Node):
         params = [Parameter("preview_fps", Parameter.Type.INTEGER, int(max(1, fps)))]
         return self._capture_params.set_parameters(params)
 
+    def set_capture_preview_relay_fps_async(self, fps: int):
+        # Best-effort: if capture node parameter service is unavailable, continue silently.
+        try:
+            ready = self._capture_params.services_are_ready()
+        except Exception:
+            ready = False
+        if not ready:
+            return None
+        params = [Parameter("preview_relay_fps", Parameter.Type.INTEGER, int(max(1, fps)))]
+        return self._capture_params.set_parameters(params)
+
 
 class MainWindow(QWidget):
     def __init__(self, ros_node: AppNode, cam0: ImageSub, cam1: ImageSub, gnss: GnssSub):
@@ -623,6 +635,7 @@ class MainWindow(QWidget):
         self.jpeg_quality = int(self.ros_node.get_parameter("jpeg_quality").value)
         self.ui_fps = max(1, int(self.ros_node.get_parameter("ui_fps").value))
         self.preview_fps = max(1, int(self.ros_node.get_parameter("preview_fps").value))
+        self.preview_relay_fps = max(1, int(self.ros_node.get_parameter("preview_relay_fps").value))
 
         # ---- Preview tab
         top_row = QHBoxLayout()
@@ -781,6 +794,10 @@ class MainWindow(QWidget):
         self.preview_fps_spin.setRange(1, 60)
         self.preview_fps_spin.setValue(self.preview_fps)
         self.preview_fps_spin.setSingleStep(1)
+        self.preview_relay_fps_spin = QSpinBox()
+        self.preview_relay_fps_spin.setRange(1, 60)
+        self.preview_relay_fps_spin.setValue(self.preview_relay_fps)
+        self.preview_relay_fps_spin.setSingleStep(1)
 
         # Topics are shown (and persisted) but changing them mid-run is risky.
         # Keep them editable but require restart.
@@ -832,8 +849,13 @@ class MainWindow(QWidget):
         prev_root = QVBoxLayout()
         prev_root.setContentsMargins(10, 10, 10, 10)
         prev_root.setSpacing(10)
+        preview_note = QLabel("Capture stream FPS affects capture quality/timing. Relay FPS affects only UI preview load.")
+        preview_note.setStyleSheet("color:#B0B0B0;")
+        preview_note.setWordWrap(True)
+        prev_root.addWidget(preview_note)
         prev_root.addLayout(row("Preview UI FPS", self.ui_fps_spin))
-        prev_root.addLayout(row("Preview camera FPS", self.preview_fps_spin))
+        prev_root.addLayout(row("Capture stream FPS", self.preview_fps_spin))
+        prev_root.addLayout(row("Preview relay FPS", self.preview_relay_fps_spin))
         prev_root.addStretch(1)
         preview_settings_page.setLayout(prev_root)
         settings_tabs.addTab(as_scroll(preview_settings_page), "Preview")
@@ -1204,6 +1226,7 @@ class MainWindow(QWidget):
         self.jpeg_quality = int(self.quality_spin.value())
         self.ui_fps = max(1, int(self.ui_fps_spin.value()))
         self.preview_fps = max(1, int(self.preview_fps_spin.value()))
+        self.preview_relay_fps = max(1, int(self.preview_relay_fps_spin.value()))
         os.makedirs(self.out_dir, exist_ok=True)
 
         cfg = {
@@ -1211,6 +1234,7 @@ class MainWindow(QWidget):
             "jpeg_quality": self.jpeg_quality,
             "ui_fps": self.ui_fps,
             "preview_fps": self.preview_fps,
+            "preview_relay_fps": self.preview_relay_fps,
             "capture_node": str(self.ros_node.get_parameter("capture_node").value),
             "cam0_topic": self.cam0_topic_edit.text().strip(),
             "cam1_topic": self.cam1_topic_edit.text().strip(),
@@ -1244,18 +1268,37 @@ class MainWindow(QWidget):
                 try:
                     r = f.result()
                     if r and bool(r[0].successful):
-                        self._log(f"Capture preview fps updated to {self.preview_fps}")
+                        self._log(f"Capture stream fps updated to {self.preview_fps}")
                     else:
                         reason = ""
                         if r and len(r) > 0:
                             reason = str(getattr(r[0], "reason", ""))
-                        self._log(f"Capture preview fps update rejected: {reason or 'unknown reason'}")
+                        self._log(f"Capture stream fps update rejected: {reason or 'unknown reason'}")
                 except Exception as e:
-                    self._log(f"Capture preview fps update failed: {e}")
+                    self._log(f"Capture stream fps update failed: {e}")
 
             cap_fut.add_done_callback(_done_cap)
         else:
-            self._log("Capture preview fps update skipped (capture node parameter service not ready)")
+            self._log("Capture stream fps update skipped (capture node parameter service not ready)")
+
+        relay_fut = self.ros_node.set_capture_preview_relay_fps_async(self.preview_relay_fps)
+        if relay_fut is not None:
+            def _done_relay(f):
+                try:
+                    r = f.result()
+                    if r and bool(r[0].successful):
+                        self._log(f"Preview relay fps updated to {self.preview_relay_fps}")
+                    else:
+                        reason = ""
+                        if r and len(r) > 0:
+                            reason = str(getattr(r[0], "reason", ""))
+                        self._log(f"Preview relay fps update rejected: {reason or 'unknown reason'}")
+                except Exception as e:
+                    self._log(f"Preview relay fps update failed: {e}")
+
+            relay_fut.add_done_callback(_done_relay)
+        else:
+            self._log("Preview relay fps update skipped (capture node parameter service not ready)")
 
     def _log(self, msg: str) -> None:
         line = f"[{_ts()}] {msg}"

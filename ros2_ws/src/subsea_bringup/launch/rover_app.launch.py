@@ -31,6 +31,9 @@ def generate_launch_description():
     preview_width = LaunchConfiguration('preview_width')
     preview_height = LaunchConfiguration('preview_height')
     preview_fps = LaunchConfiguration('preview_fps')
+    preview_ui_width = LaunchConfiguration('preview_ui_width')
+    preview_ui_height = LaunchConfiguration('preview_ui_height')
+    preview_ui_fps = LaunchConfiguration('preview_ui_fps')
     preview_format = LaunchConfiguration('preview_format')
     ui_fps = LaunchConfiguration('ui_fps')
     odom_local_topic = LaunchConfiguration('odom_local_topic')
@@ -46,6 +49,9 @@ def generate_launch_description():
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
+    preview_ui_w_int = ParameterValue(preview_ui_width, value_type=int)
+    preview_ui_h_int = ParameterValue(preview_ui_height, value_type=int)
+    preview_ui_fps_int = ParameterValue(preview_ui_fps, value_type=int)
     ui_fps_int = ParameterValue(ui_fps, value_type=int)
 
     # Only start standalone camera_ros nodes if manage_previews:=false.
@@ -195,6 +201,10 @@ def generate_launch_description():
             'preview_width': preview_w_int,
             'preview_height': preview_h_int,
             'preview_fps': preview_fps_int,
+            'preview_relay_enable': True,
+            'preview_relay_width': preview_ui_w_int,
+            'preview_relay_height': preview_ui_h_int,
+            'preview_relay_fps': preview_ui_fps_int,
             'preview_format': preview_format,
             'preview_role': 'viewfinder',
             'preview_start_stagger_s': 0.2,
@@ -204,11 +214,14 @@ def generate_launch_description():
             'device_release_timeout_s': 1.0,
             'capture_parallel': True,
 
-            # Make preview topics match the UI defaults:
+            # Capture-stream topics from camera_ros:
             'cam0_namespace': '/cam0',
             'cam1_namespace': '/cam1',
             'cam0_node_name': 'camera',
             'cam1_node_name': 'camera',
+            # UI consumes relayed low-load preview topics:
+            'ui_cam0_node_name': 'preview',
+            'ui_cam1_node_name': 'preview',
             'use_local_libcamera_env': False,
             'sanitize_preview_env': True,
             'gpio_trigger_enable': enable_gpio_button_bool,
@@ -229,6 +242,9 @@ def generate_launch_description():
         parameters=[{
             'ui_fps': ui_fps_int,
             'preview_fps': preview_fps_int,
+            'preview_relay_fps': preview_ui_fps_int,
+            'cam0_topic': '/cam0/preview/image_raw',
+            'cam1_topic': '/cam1/preview/image_raw',
             'capture_node': '/capture_service',
             'capture_event_topic': '/capture/events',
             'capture_debug_topic': capture_debug_topic,
@@ -265,6 +281,9 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_width', default_value='960'),
         DeclareLaunchArgument('preview_height', default_value='540'),
         DeclareLaunchArgument('preview_fps', default_value='15'),
+        DeclareLaunchArgument('preview_ui_width', default_value='640'),
+        DeclareLaunchArgument('preview_ui_height', default_value='360'),
+        DeclareLaunchArgument('preview_ui_fps', default_value='10'),
         DeclareLaunchArgument('preview_format', default_value='RGB888'),
         DeclareLaunchArgument('ui_fps', default_value='12'),
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),

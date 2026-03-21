@@ -241,6 +241,10 @@ class CaptureService(Node):
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
         self.declare_parameter("preview_fps", 20)
+        self.declare_parameter("preview_relay_enable", True)
+        self.declare_parameter("preview_relay_width", 640)
+        self.declare_parameter("preview_relay_height", 360)
+        self.declare_parameter("preview_relay_fps", 10)
         self.declare_parameter("preview_format", "RGB888")
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
@@ -251,6 +255,10 @@ class CaptureService(Node):
         self.declare_parameter("cam1_namespace", "/cam1")
         self.declare_parameter("cam0_node_name", "camera")
         self.declare_parameter("cam1_node_name", "camera")
+        self.declare_parameter("ui_cam0_node_name", "preview")
+        self.declare_parameter("ui_cam1_node_name", "preview")
+        self.declare_parameter("ui_cam0_topic", "")
+        self.declare_parameter("ui_cam1_topic", "")
         self.declare_parameter("use_local_libcamera_env", False)
         self.declare_parameter("sanitize_preview_env", True)
         self.declare_parameter("gnss_fix_topic", "/fix")
@@ -300,6 +308,12 @@ class CaptureService(Node):
         self._fallback_w = 0
         self._fallback_h = 0
         self._fallback_data: Optional[bytes] = None
+        self._relay_pub0 = None
+        self._relay_pub1 = None
+        self._relay_timer = None
+        self._relay_last_cam0_msg_id: Optional[int] = None
+        self._relay_last_cam1_msg_id: Optional[int] = None
+        self._relay_last_warn_mono = 0.0
         self._detected_cam_count: Optional[int] = None
         self._expected_preview_cams: Optional[int] = None
         self._preview_restart_count: int = 0
@@ -346,11 +360,23 @@ class CaptureService(Node):
         ns1 = str(self.get_parameter("cam1_namespace").value)
         n0 = str(self.get_parameter("cam0_node_name").value)
         n1 = str(self.get_parameter("cam1_node_name").value)
-        cam0_topic = self._preview_topic(ns0, n0)
-        cam1_topic = self._preview_topic(ns1, n1)
-        self._cam0_sub = self.create_subscription(Image, cam0_topic, self._on_cam0_image, img_qos)
-        self._cam1_sub = self.create_subscription(Image, cam1_topic, self._on_cam1_image, img_qos)
-        self.get_logger().info(f"Stream capture subscribers: cam0={cam0_topic} cam1={cam1_topic}")
+        self._stream_cam0_topic = self._preview_topic(ns0, n0)
+        self._stream_cam1_topic = self._preview_topic(ns1, n1)
+        ui_n0 = str(self.get_parameter("ui_cam0_node_name").value)
+        ui_n1 = str(self.get_parameter("ui_cam1_node_name").value)
+        ui_t0 = str(self.get_parameter("ui_cam0_topic").value).strip()
+        ui_t1 = str(self.get_parameter("ui_cam1_topic").value).strip()
+        self._ui_cam0_topic = self._ui_topic(ns0, ui_n0, ui_t0)
+        self._ui_cam1_topic = self._ui_topic(ns1, ui_n1, ui_t1)
+        self._cam0_sub = self.create_subscription(Image, self._stream_cam0_topic, self._on_cam0_image, img_qos)
+        self._cam1_sub = self.create_subscription(Image, self._stream_cam1_topic, self._on_cam1_image, img_qos)
+        self.get_logger().info(
+            f"Stream capture subscribers: cam0={self._stream_cam0_topic} cam1={self._stream_cam1_topic}"
+        )
+        self.get_logger().info(
+            f"UI preview topics: cam0={self._ui_cam0_topic} cam1={self._ui_cam1_topic}"
+        )
+        self._start_preview_relay()
 
         fix_topic = str(self.get_parameter("gnss_fix_topic").value)
         time_ref_topic = str(self.get_parameter("gnss_time_ref_topic").value)
@@ -426,6 +452,7 @@ class CaptureService(Node):
 
     def _on_set_parameters(self, params) -> SetParametersResult:
         restart_reasons: List[str] = []
+        relay_reasons: List[str] = []
         for p in params:
             if p.name == "preview_fps":
                 try:
@@ -455,9 +482,43 @@ class CaptureService(Node):
                 restart_reasons.append(f"preview_format={str(p.value)}")
             elif p.name == "preview_role":
                 restart_reasons.append(f"preview_role={str(p.value)}")
+            elif p.name == "preview_relay_fps":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_relay_fps must be an integer")
+                if v < 1 or v > 120:
+                    return SetParametersResult(successful=False, reason="preview_relay_fps must be in [1,120]")
+                relay_reasons.append(f"preview_relay_fps={v}")
+            elif p.name == "preview_relay_width":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_relay_width must be an integer")
+                if v < 64:
+                    return SetParametersResult(successful=False, reason="preview_relay_width must be >= 64")
+                relay_reasons.append(f"preview_relay_width={v}")
+            elif p.name == "preview_relay_height":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_relay_height must be an integer")
+                if v < 64:
+                    return SetParametersResult(successful=False, reason="preview_relay_height must be >= 64")
+                relay_reasons.append(f"preview_relay_height={v}")
+            elif p.name in (
+                "preview_relay_enable",
+                "ui_cam0_node_name",
+                "ui_cam1_node_name",
+                "ui_cam0_topic",
+                "ui_cam1_topic",
+            ):
+                relay_reasons.append(f"{p.name}={p.value}")
 
         if restart_reasons:
             self._request_preview_reconfigure(", ".join(restart_reasons))
+        if relay_reasons:
+            self._restart_preview_relay(", ".join(relay_reasons))
         return SetParametersResult(successful=True, reason="")
 
     def _request_preview_reconfigure(self, reason: str) -> None:
@@ -521,6 +582,177 @@ class CaptureService(Node):
         if node_name:
             return f"/{node_name}/image_raw"
         return "/image_raw"
+
+    def _normalize_topic(self, topic: str) -> str:
+        t = (topic or "").strip()
+        if not t:
+            return ""
+        if not t.startswith("/"):
+            t = "/" + t
+        return t
+
+    def _ui_topic(self, ns: str, node_name: str, explicit_topic: str) -> str:
+        explicit = self._normalize_topic(explicit_topic)
+        if explicit:
+            return explicit
+        return self._preview_topic(ns, node_name)
+
+    def _refresh_ui_topics(self) -> None:
+        ns0 = str(self.get_parameter("cam0_namespace").value)
+        ns1 = str(self.get_parameter("cam1_namespace").value)
+        ui_n0 = str(self.get_parameter("ui_cam0_node_name").value)
+        ui_n1 = str(self.get_parameter("ui_cam1_node_name").value)
+        ui_t0 = str(self.get_parameter("ui_cam0_topic").value).strip()
+        ui_t1 = str(self.get_parameter("ui_cam1_topic").value).strip()
+        self._ui_cam0_topic = self._ui_topic(ns0, ui_n0, ui_t0)
+        self._ui_cam1_topic = self._ui_topic(ns1, ui_n1, ui_t1)
+
+    def _warn_preview_relay(self, message: str) -> None:
+        now_m = time.monotonic()
+        if (now_m - self._relay_last_warn_mono) < 1.0:
+            return
+        self._relay_last_warn_mono = now_m
+        self.get_logger().warn(message)
+
+    def _start_preview_relay(self) -> None:
+        if self._relay_timer is not None:
+            return
+        if not bool(self.get_parameter("preview_relay_enable").value):
+            return
+
+        self._refresh_ui_topics()
+        qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+
+        pub_topics: List[str] = []
+        if self._ui_cam0_topic and self._ui_cam0_topic != self._stream_cam0_topic:
+            self._relay_pub0 = self.create_publisher(Image, self._ui_cam0_topic, qos)
+            pub_topics.append(self._ui_cam0_topic)
+        elif self._ui_cam0_topic:
+            self.get_logger().warn(
+                f"Preview relay cam0 disabled (same input/output topic): {self._ui_cam0_topic}"
+            )
+            self._relay_pub0 = None
+
+        if self._ui_cam1_topic and self._ui_cam1_topic != self._stream_cam1_topic:
+            self._relay_pub1 = self.create_publisher(Image, self._ui_cam1_topic, qos)
+            pub_topics.append(self._ui_cam1_topic)
+        elif self._ui_cam1_topic:
+            self.get_logger().warn(
+                f"Preview relay cam1 disabled (same input/output topic): {self._ui_cam1_topic}"
+            )
+            self._relay_pub1 = None
+
+        if self._relay_pub0 is None and self._relay_pub1 is None:
+            return
+
+        fps = max(1, int(self.get_parameter("preview_relay_fps").value))
+        self._relay_last_cam0_msg_id = None
+        self._relay_last_cam1_msg_id = None
+        self._relay_timer = self.create_timer(1.0 / float(fps), self._publish_preview_relay)
+        self.get_logger().info(
+            f"Preview relay enabled: fps={fps} topics={' | '.join(pub_topics)}"
+        )
+
+    def _stop_preview_relay(self) -> None:
+        if self._relay_timer is not None:
+            try:
+                self.destroy_timer(self._relay_timer)
+            except Exception:
+                try:
+                    self._relay_timer.cancel()
+                except Exception:
+                    pass
+        self._relay_timer = None
+        if self._relay_pub0 is not None:
+            try:
+                self.destroy_publisher(self._relay_pub0)
+            except Exception:
+                pass
+        if self._relay_pub1 is not None:
+            try:
+                self.destroy_publisher(self._relay_pub1)
+            except Exception:
+                pass
+        self._relay_pub0 = None
+        self._relay_pub1 = None
+        self._relay_last_cam0_msg_id = None
+        self._relay_last_cam1_msg_id = None
+
+    def _restart_preview_relay(self, reason: str) -> None:
+        try:
+            self.get_logger().info(f"Applying preview relay update ({reason})")
+            self._stop_preview_relay()
+            self._start_preview_relay()
+        except Exception as e:
+            self.get_logger().error(f"Failed to apply preview relay update: {e}")
+
+    def _publish_preview_relay_image(
+        self,
+        src: Image,
+        pub,
+        width: int,
+        height: int,
+        default_frame_id: str,
+    ) -> None:
+        frame = self._imgmsg_to_bgr(src)
+        src_h, src_w = frame.shape[:2]
+        if src_w != width or src_h != height:
+            interp = cv2.INTER_AREA if (width < src_w or height < src_h) else cv2.INTER_LINEAR
+            frame = cv2.resize(frame, (int(width), int(height)), interpolation=interp)
+
+        out = Image()
+        out.header.stamp = src.header.stamp
+        out.header.frame_id = src.header.frame_id or default_frame_id
+        out.height = int(frame.shape[0])
+        out.width = int(frame.shape[1])
+        out.encoding = "bgr8"
+        out.is_bigendian = False
+        out.step = int(out.width * 3)
+        out.data = frame.tobytes()
+        pub.publish(out)
+
+    def _publish_preview_relay(self) -> None:
+        if self._relay_pub0 is None and self._relay_pub1 is None:
+            return
+
+        width = max(64, int(self.get_parameter("preview_relay_width").value))
+        height = max(64, int(self.get_parameter("preview_relay_height").value))
+        msg0, msg1, _rx0, _rx1 = self._latest_stream_snapshot()
+
+        if self._relay_pub0 is not None and msg0 is not None:
+            msg_id = id(msg0)
+            if self._relay_last_cam0_msg_id != msg_id:
+                try:
+                    self._publish_preview_relay_image(
+                        msg0,
+                        self._relay_pub0,
+                        width,
+                        height,
+                        "cam0_optical_frame",
+                    )
+                    self._relay_last_cam0_msg_id = msg_id
+                except Exception as e:
+                    self._warn_preview_relay(f"Preview relay cam0 drop: {e}")
+
+        if self._relay_pub1 is not None and msg1 is not None:
+            msg_id = id(msg1)
+            if self._relay_last_cam1_msg_id != msg_id:
+                try:
+                    self._publish_preview_relay_image(
+                        msg1,
+                        self._relay_pub1,
+                        width,
+                        height,
+                        "cam1_optical_frame",
+                    )
+                    self._relay_last_cam1_msg_id = msg_id
+                except Exception as e:
+                    self._warn_preview_relay(f"Preview relay cam1 drop: {e}")
 
     def _setup_gpio_trigger(self) -> None:
         if not bool(self.get_parameter("gpio_trigger_enable").value):
@@ -1235,13 +1467,16 @@ class CaptureService(Node):
     def _start_black_previews(self, camera_count: Optional[int] = None) -> None:
         if self._fallback_timer is not None:
             return
-        ns0 = str(self.get_parameter("cam0_namespace").value)
-        ns1 = str(self.get_parameter("cam1_namespace").value)
-        n0 = str(self.get_parameter("cam0_node_name").value)
-        n1 = str(self.get_parameter("cam1_node_name").value)
-        w = int(self.get_parameter("preview_width").value)
-        h = int(self.get_parameter("preview_height").value)
-        fps = max(1, int(self.get_parameter("preview_fps").value))
+        relay_enabled = bool(self.get_parameter("preview_relay_enable").value)
+        if relay_enabled:
+            w = int(self.get_parameter("preview_relay_width").value)
+            h = int(self.get_parameter("preview_relay_height").value)
+            fps = max(1, int(self.get_parameter("preview_relay_fps").value))
+        else:
+            w = int(self.get_parameter("preview_width").value)
+            h = int(self.get_parameter("preview_height").value)
+            fps = max(1, int(self.get_parameter("preview_fps").value))
+        self._refresh_ui_topics()
 
         # If detection knows camera count, only publish those slots. This avoids
         # showing disconnected cameras as "active".
@@ -1259,12 +1494,12 @@ class CaptureService(Node):
             durability=DurabilityPolicy.VOLATILE,
         )
         if publish_slots >= 1:
-            self._fallback_pub0 = self.create_publisher(Image, self._preview_topic(ns0, n0), qos)
+            self._fallback_pub0 = self.create_publisher(Image, self._ui_cam0_topic, qos)
         else:
             self._fallback_pub0 = None
 
         if publish_slots >= 2:
-            self._fallback_pub1 = self.create_publisher(Image, self._preview_topic(ns1, n1), qos)
+            self._fallback_pub1 = self.create_publisher(Image, self._ui_cam1_topic, qos)
         else:
             self._fallback_pub1 = None
 
@@ -1282,9 +1517,9 @@ class CaptureService(Node):
         self._fallback_timer = self.create_timer(period, self._publish_black_previews)
         topics = []
         if self._fallback_pub0 is not None:
-            topics.append(self._preview_topic(ns0, n0))
+            topics.append(self._ui_cam0_topic)
         if self._fallback_pub1 is not None:
-            topics.append(self._preview_topic(ns1, n1))
+            topics.append(self._ui_cam1_topic)
         self.get_logger().info(f"Black preview publishers running: {' | '.join(topics)}")
 
     def _stop_black_previews(self) -> None:
@@ -2107,6 +2342,10 @@ def main():
             pass
         try:
             node._stop_black_previews()
+        except Exception:
+            pass
+        try:
+            node._stop_preview_relay()
         except Exception:
             pass
         try:

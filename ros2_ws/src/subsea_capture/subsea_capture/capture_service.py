@@ -254,7 +254,7 @@ class CaptureService(Node):
     def _handle_no_cameras(self, fallback_black: bool) -> None:
         if fallback_black:
             self.get_logger().warn("No cameras detected. Publishing black preview frames.")
-            self._start_black_previews()
+            self._start_black_previews(camera_count=0)
         else:
             self.get_logger().warn("No cameras detected. Previews disabled.")
 
@@ -272,7 +272,7 @@ class CaptureService(Node):
             return f"/{node_name}/image_raw"
         return "/image_raw"
 
-    def _start_black_previews(self) -> None:
+    def _start_black_previews(self, camera_count: Optional[int] = None) -> None:
         if self._fallback_timer is not None:
             return
         ns0 = str(self.get_parameter("cam0_namespace").value)
@@ -283,23 +283,49 @@ class CaptureService(Node):
         h = int(self.get_parameter("preview_height").value)
         fps = max(1, int(self.get_parameter("preview_fps").value))
 
+        # If detection knows camera count, only publish those slots. This avoids
+        # showing disconnected cameras as "active".
+        if camera_count is None:
+            camera_count = self._detected_cam_count
+        if camera_count is None:
+            publish_slots = 2
+        else:
+            publish_slots = max(0, min(2, int(camera_count)))
+
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        self._fallback_pub0 = self.create_publisher(Image, self._preview_topic(ns0, n0), qos)
-        self._fallback_pub1 = self.create_publisher(Image, self._preview_topic(ns1, n1), qos)
+        if publish_slots >= 1:
+            self._fallback_pub0 = self.create_publisher(Image, self._preview_topic(ns0, n0), qos)
+        else:
+            self._fallback_pub0 = None
+
+        if publish_slots >= 2:
+            self._fallback_pub1 = self.create_publisher(Image, self._preview_topic(ns1, n1), qos)
+        else:
+            self._fallback_pub1 = None
+
+        if self._fallback_pub0 is None and self._fallback_pub1 is None:
+            self.get_logger().warn(
+                "Black fallback requested but no camera slots are active (camera_count=0)"
+            )
+            return
+
         self._fallback_w = w
         self._fallback_h = h
         self._fallback_data = bytes(w * h * 3)
 
         period = 1.0 / float(fps)
         self._fallback_timer = self.create_timer(period, self._publish_black_previews)
-        self.get_logger().info(
-            f"Black preview publishers running: {self._preview_topic(ns0, n0)} | {self._preview_topic(ns1, n1)}"
-        )
+        topics = []
+        if self._fallback_pub0 is not None:
+            topics.append(self._preview_topic(ns0, n0))
+        if self._fallback_pub1 is not None:
+            topics.append(self._preview_topic(ns1, n1))
+        self.get_logger().info(f"Black preview publishers running: {' | '.join(topics)}")
 
     def _stop_black_previews(self) -> None:
         if self._fallback_timer is not None:
@@ -326,31 +352,32 @@ class CaptureService(Node):
         self._fallback_data = None
 
     def _publish_black_previews(self) -> None:
-        if self._fallback_pub0 is None or self._fallback_pub1 is None or self._fallback_data is None:
+        if self._fallback_data is None:
             return
         stamp = now_ros_time(self)
-        msg0 = Image()
-        msg0.header.stamp = stamp
-        msg0.header.frame_id = "cam0_optical_frame"
-        msg0.height = self._fallback_h
-        msg0.width = self._fallback_w
-        msg0.encoding = "bgr8"
-        msg0.is_bigendian = False
-        msg0.step = self._fallback_w * 3
-        msg0.data = self._fallback_data
+        if self._fallback_pub0 is not None:
+            msg0 = Image()
+            msg0.header.stamp = stamp
+            msg0.header.frame_id = "cam0_optical_frame"
+            msg0.height = self._fallback_h
+            msg0.width = self._fallback_w
+            msg0.encoding = "bgr8"
+            msg0.is_bigendian = False
+            msg0.step = self._fallback_w * 3
+            msg0.data = self._fallback_data
+            self._fallback_pub0.publish(msg0)
 
-        msg1 = Image()
-        msg1.header.stamp = stamp
-        msg1.header.frame_id = "cam1_optical_frame"
-        msg1.height = self._fallback_h
-        msg1.width = self._fallback_w
-        msg1.encoding = "bgr8"
-        msg1.is_bigendian = False
-        msg1.step = self._fallback_w * 3
-        msg1.data = self._fallback_data
-
-        self._fallback_pub0.publish(msg0)
-        self._fallback_pub1.publish(msg1)
+        if self._fallback_pub1 is not None:
+            msg1 = Image()
+            msg1.header.stamp = stamp
+            msg1.header.frame_id = "cam1_optical_frame"
+            msg1.height = self._fallback_h
+            msg1.width = self._fallback_w
+            msg1.encoding = "bgr8"
+            msg1.is_bigendian = False
+            msg1.step = self._fallback_w * 3
+            msg1.data = self._fallback_data
+            self._fallback_pub1.publish(msg1)
 
     def _preview_params(self, cam_index: int, frame_id: str) -> dict:
         w = int(self.get_parameter("preview_width").value)
@@ -468,7 +495,7 @@ class CaptureService(Node):
                     "Preview camera nodes exited early. Falling back to black previews."
                 )
                 self._stop_previews_managed()
-                self._start_black_previews()
+                self._start_black_previews(camera_count=0)
             elif p0_dead or p1_dead:
                 self.get_logger().warn(
                     "One preview camera node exited early. Continuing with remaining stream."
@@ -486,7 +513,7 @@ class CaptureService(Node):
                 "Falling back to black previews."
             )
             self._stop_previews_managed()
-            self._start_black_previews()
+            self._start_black_previews(camera_count=self._expected_preview_cams)
 
     def _stop_previews_managed(self) -> None:
         timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)

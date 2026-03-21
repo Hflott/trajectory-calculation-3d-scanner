@@ -220,6 +220,7 @@ class CaptureService(Node):
         self.declare_parameter("default_quality", 95)
         self.declare_parameter("capture_mode", "stream")  # stream|still
         self.declare_parameter("stream_wait_s", 1.0)
+        self.declare_parameter("stream_initial_wait_s", 5.0)
         self.declare_parameter("stream_max_frame_age_s", 1.0)
         self.declare_parameter("write_capture_metadata", True)
         self.declare_parameter("sensor_buffer_s", 20.0)
@@ -254,6 +255,7 @@ class CaptureService(Node):
         self.declare_parameter("gpio_trigger_line", 24)
         self.declare_parameter("gpio_trigger_active_low", True)
         self.declare_parameter("gpio_trigger_cooldown_ms", 1000)
+        self.declare_parameter("gpio_trigger_debounce_ms", 40)
         self.declare_parameter("gpio_trigger_session_prefix", "btn")
         self.declare_parameter("gpio_trigger_output_dir", "")
         self.declare_parameter("gpio_trigger_quality", 0)
@@ -308,6 +310,7 @@ class CaptureService(Node):
         self._gpio_req = None
         self._gpio_timer = None
         self._gpio_prev_pressed = False
+        self._gpio_pressed_since_mono: Optional[float] = None
         self._gpio_last_trigger_mono = 0.0
         self._gpio_capture_thread = None
 
@@ -562,12 +565,16 @@ class CaptureService(Node):
 
         self._gpio_mod = gpiod
         self._gpio_chip = chip
-        self._gpio_prev_pressed = False
+        initial_pressed = self._read_gpio_pressed()
+        self._gpio_prev_pressed = bool(initial_pressed) if initial_pressed is not None else False
+        self._gpio_pressed_since_mono = time.monotonic() if self._gpio_prev_pressed else None
         self._gpio_last_trigger_mono = 0.0
         self._gpio_timer = self.create_timer(poll_ms / 1000.0, self._gpio_poll_cb)
         self.get_logger().info(
             f"GPIO trigger enabled: chip={chip_name} line={line_offset} "
-            f"active_low={active_low} poll_ms={poll_ms}"
+            f"active_low={active_low} poll_ms={poll_ms} "
+            f"debounce_ms={int(self.get_parameter('gpio_trigger_debounce_ms').value)} "
+            f"initial_pressed={self._gpio_prev_pressed}"
         )
 
     def _read_gpio_pressed(self) -> Optional[bool]:
@@ -602,14 +609,29 @@ class CaptureService(Node):
         if pressed is None:
             return
 
-        # Trigger on press edge only.
-        if pressed and not self._gpio_prev_pressed:
+        now_m = time.monotonic()
+        debounce_s = max(0.0, float(self.get_parameter("gpio_trigger_debounce_ms").value) / 1000.0)
+
+        if pressed:
+            if self._gpio_pressed_since_mono is None:
+                self._gpio_pressed_since_mono = now_m
+        else:
+            self._gpio_pressed_since_mono = None
+
+        stable_pressed = bool(
+            pressed
+            and self._gpio_pressed_since_mono is not None
+            and ((now_m - self._gpio_pressed_since_mono) >= debounce_s)
+        )
+
+        # Trigger on stable press edge only.
+        if stable_pressed and not self._gpio_prev_pressed:
             now_m = time.monotonic()
             cooldown_s = max(0.05, float(self.get_parameter("gpio_trigger_cooldown_ms").value) / 1000.0)
             if (now_m - self._gpio_last_trigger_mono) >= cooldown_s:
                 self._gpio_last_trigger_mono = now_m
                 self._on_gpio_trigger()
-        self._gpio_prev_pressed = pressed
+        self._gpio_prev_pressed = stable_pressed
 
     def _on_gpio_trigger(self) -> None:
         if self._gpio_capture_thread is not None and self._gpio_capture_thread.is_alive():
@@ -1473,7 +1495,15 @@ class CaptureService(Node):
         require_cam1 = (cam_count is not None and cam_count >= 2)
 
         wait_s = max(0.1, float(self.get_parameter("stream_wait_s").value))
+        initial_wait_s = max(wait_s, float(self.get_parameter("stream_initial_wait_s").value))
         max_age_s = max(0.05, float(self.get_parameter("stream_max_frame_age_s").value))
+        pre0, pre1, _, _ = self._latest_stream_snapshot()
+        if (pre0 is None) or (require_cam1 and pre1 is None):
+            wait_s = initial_wait_s
+            self.get_logger().info(
+                f"Stream capture warmup: waiting up to {wait_s:.1f}s for initial frames "
+                f"(cam0_seen={pre0 is not None}, cam1_seen={pre1 is not None}, cam1_required={require_cam1})"
+            )
         deadline = time.monotonic() + wait_s
 
         msg0 = msg1 = None

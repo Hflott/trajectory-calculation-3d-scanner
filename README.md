@@ -99,8 +99,10 @@ You can trigger captures from a physical button wired to a GPIO input.
 
 Default launch settings:
 - enabled by default (`enable_gpio_button:=true`)
+- GPIO chip `/dev/gpiochip4` (Raspberry Pi 5 header GPIO controller)
 - pin `GPIO24` (`gpio_button_pin:=24`, BCM numbering)
 - active-low trigger (button to `GND`)
+- debounce `40 ms` (`gpio_button_debounce_ms:=40`)
 - physical wiring for default: pin `18` (GPIO24) to pin `20` (GND)
 
 Example:

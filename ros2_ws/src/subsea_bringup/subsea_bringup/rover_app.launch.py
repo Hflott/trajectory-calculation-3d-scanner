@@ -27,6 +27,7 @@ def generate_launch_description():
     capture_mode = LaunchConfiguration('capture_mode')
     enable_gpio_button = LaunchConfiguration('enable_gpio_button')
     gpio_button_pin = LaunchConfiguration('gpio_button_pin')
+    gpio_button_debounce_ms = LaunchConfiguration('gpio_button_debounce_ms')
     preview_width = LaunchConfiguration('preview_width')
     preview_height = LaunchConfiguration('preview_height')
     preview_fps = LaunchConfiguration('preview_fps')
@@ -38,6 +39,7 @@ def generate_launch_description():
     manage_previews_bool = ParameterValue(manage_previews, value_type=bool)
     enable_gpio_button_bool = ParameterValue(enable_gpio_button, value_type=bool)
     gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
+    gpio_button_debounce_ms_int = ParameterValue(gpio_button_debounce_ms, value_type=int)
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
@@ -197,8 +199,10 @@ def generate_launch_description():
             'use_local_libcamera_env': False,
             'sanitize_preview_env': True,
             'gpio_trigger_enable': enable_gpio_button_bool,
+            'gpio_trigger_chip': '/dev/gpiochip4',
             'gpio_trigger_line': gpio_button_pin_int,
             'gpio_trigger_active_low': True,
+            'gpio_trigger_debounce_ms': gpio_button_debounce_ms_int,
             'gpio_trigger_cooldown_ms': 700,
             'gpio_trigger_session_prefix': 'btn',
         }]
@@ -242,6 +246,7 @@ def generate_launch_description():
         DeclareLaunchArgument('capture_mode', default_value='stream'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
+        DeclareLaunchArgument('gpio_button_debounce_ms', default_value='40'),
         DeclareLaunchArgument('preview_width', default_value='960'),
         DeclareLaunchArgument('preview_height', default_value='540'),
         DeclareLaunchArgument('preview_fps', default_value='15'),

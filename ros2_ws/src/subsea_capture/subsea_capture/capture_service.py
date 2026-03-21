@@ -119,7 +119,8 @@ def _parse_camera_count(output: str) -> Optional[int]:
                 if "Available cameras" in line:
                     start = True
                 continue
-            if re.match(r"^\s*\d+:", line):
+            # Handle both "0: imx..." and "0 : imx..." formats.
+            if re.match(r"^\s*\d+\s*:", line):
                 count += 1
         return count
 
@@ -129,10 +130,10 @@ def _parse_camera_count(output: str) -> Optional[int]:
 def _libcamera_camera_count() -> Optional[int]:
     # Returns number of cameras if a libcamera CLI is available, else None.
     cmds = (
+        ["rpicam-hello", "--list-cameras"],
+        ["libcamera-hello", "--list-cameras"],
         ["cam", "-l"],
         ["cam", "--list"],
-        ["libcamera-hello", "--list-cameras"],
-        ["rpicam-hello", "--list-cameras"],
     )
     for cmd in cmds:
         try:
@@ -154,6 +155,22 @@ def _has_camera_device_hint(devs: List[str]) -> bool:
         if p.startswith("/dev/video") or p.startswith("/dev/media"):
             return True
     return False
+
+
+def _sanitize_preview_ld_library_path(ld_path: str) -> str:
+    keep: List[str] = []
+    for p in ld_path.split(":"):
+        s = p.strip()
+        if not s:
+            continue
+        low = s.lower()
+        # Common local overrides that break camera_ros/libcamera discovery.
+        if low.startswith("/usr/local/lib"):
+            continue
+        if "/camera_ws/" in low:
+            continue
+        keep.append(s)
+    return ":".join(keep)
 
 
 def _stamp_to_ns(stamp: TimeMsg) -> int:
@@ -200,6 +217,7 @@ class CaptureService(Node):
         self.declare_parameter("cam0_node_name", "camera")
         self.declare_parameter("cam1_node_name", "camera")
         self.declare_parameter("use_local_libcamera_env", False)
+        self.declare_parameter("sanitize_preview_env", True)
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
@@ -857,9 +875,21 @@ class CaptureService(Node):
 
     def _preview_env(self) -> dict:
         env = os.environ.copy()
-        if not bool(self.get_parameter("use_local_libcamera_env").value):
-            # Default to system libcamera. Forcing /usr/local often breaks
-            # camera discovery if stale custom builds are present.
+        use_local = bool(self.get_parameter("use_local_libcamera_env").value)
+        sanitize = bool(self.get_parameter("sanitize_preview_env").value)
+
+        if not use_local:
+            # Default to system libcamera.
+            if sanitize:
+                # Drop stale custom libcamera overrides while keeping ROS paths.
+                env.pop("LIBCAMERA_IPA_MODULE_PATH", None)
+                old_ld = env.get("LD_LIBRARY_PATH", "")
+                if old_ld:
+                    cleaned = _sanitize_preview_ld_library_path(old_ld)
+                    if cleaned:
+                        env["LD_LIBRARY_PATH"] = cleaned
+                    else:
+                        env.pop("LD_LIBRARY_PATH", None)
             return env
 
         local_libs = [
@@ -888,6 +918,12 @@ class CaptureService(Node):
     def _start_preview_proc(self, cam_index: int, ns: str, node_name: str, params_path: str, frame_id: str) -> subprocess.Popen:
         if self._camera_node_exe is None:
             self._camera_node_exe = _camera_ros_exe_path()
+            self.get_logger().info(f"camera_ros executable: {self._camera_node_exe}")
+            if self._camera_node_exe.startswith("/opt/ros/"):
+                self.get_logger().warn(
+                    "Using camera_ros from /opt/ros. If previews fail with 'no cameras available', "
+                    "build camera_ros in this workspace and re-source install/setup.bash."
+                )
         _write_params_file(params_path, self._preview_params(cam_index, frame_id))
 
         cmd = [

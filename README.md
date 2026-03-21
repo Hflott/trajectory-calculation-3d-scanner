@@ -114,6 +114,16 @@ Wiring recommendation:
 - other side to `GND`
 - keep `GPIO23` reserved for PPS if you use GNSS PPS there
 
+If you see:
+- `python gpiod import failed`: install `python3-libgpiod`
+- `failed to open chip '/dev/gpiochip0': [Errno 13] Permission denied`: add your user to `gpio` group, then re-login:
+
+```bash
+sudo apt-get install -y python3-libgpiod gpiod
+sudo usermod -aG gpio $USER
+newgrp gpio
+```
+
 ### PPS note (GPIO23, Raspberry Pi 5)
 `robot_localization` does not configure PPS itself. PPS must be enabled in Linux (`pps-gpio` and time-sync daemon such as `chrony`/`gpsd`) so GNSS/IMU timestamps are accurate before fusion.
 
@@ -126,3 +136,25 @@ colcon build --symlink-install
 source install/setup.bash
 ros2 launch subsea_mock mock_app.launch.py
 ```
+
+### Camera feed troubleshooting on Raspberry Pi
+If preview logs show `camera_ros` exits with `no cameras available`, check whether you are using the apt binary:
+
+```bash
+ros2 pkg prefix camera_ros
+```
+
+If this prints `/opt/ros/jazzy`, build workspace `camera_ros`:
+
+```bash
+cd ~/trajectory-calculation-3d-scanner/ros2_ws/src
+git clone --depth 1 https://github.com/christianrauch/camera_ros.git
+cd ..
+source /opt/ros/jazzy/setup.bash
+rosdep install --from-paths src --ignore-src -r -y --skip-keys ament_python
+colcon build --symlink-install --packages-select camera_ros subsea_capture subsea_bringup subsea_ui
+source install/setup.bash
+ros2 pkg prefix camera_ros
+```
+
+The final `ros2 pkg prefix camera_ros` should point to your workspace `install/` path, not `/opt/ros/jazzy`.

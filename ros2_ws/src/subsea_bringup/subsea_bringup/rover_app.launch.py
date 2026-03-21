@@ -192,6 +192,7 @@ def generate_launch_description():
             'cam0_node_name': 'camera',
             'cam1_node_name': 'camera',
             'use_local_libcamera_env': False,
+            'sanitize_preview_env': True,
             'gpio_trigger_enable': enable_gpio_button_bool,
             'gpio_trigger_line': gpio_button_pin_int,
             'gpio_trigger_active_low': True,

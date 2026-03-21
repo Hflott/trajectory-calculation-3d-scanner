@@ -285,7 +285,7 @@ EOF
 
 configure_rpi_accessories() {
   log "Installing Raspberry Pi accessory packages"
-  apt_install gpsd gpsd-clients chrony pps-tools i2c-tools
+  apt_install gpsd gpsd-clients chrony pps-tools i2c-tools gpiod
 
   configure_rpi_boot_overlays
 
@@ -308,6 +308,10 @@ configure_rpi_accessories() {
     warn "systemctl not available; please restart gpsd/chrony manually."
   fi
 
+  # GPIO trigger button access without root.
+  local target_user="${SUDO_USER:-${USER}}"
+  run_root usermod -aG gpio "${target_user}" >/dev/null 2>&1 || true
+
   warn "Raspberry Pi boot config was updated. Reboot is required for PPS/UART/I2C changes to fully apply."
 }
 
@@ -319,6 +323,15 @@ sync_submodules() {
   else
     warn "Repository is not a git checkout; skipping submodule initialization."
   fi
+}
+
+ensure_camera_ros_source() {
+  local cam_dir="${WS_DIR}/src/camera_ros"
+  if [[ -d "${cam_dir}" ]]; then
+    return
+  fi
+  log "camera_ros source not found in workspace; cloning into src/"
+  git clone --depth 1 https://github.com/christianrauch/camera_ros.git "${cam_dir}"
 }
 
 setup_rosdep() {
@@ -335,7 +348,7 @@ build_workspace() {
   # shellcheck disable=SC1091
   source "/opt/ros/${ROS_DISTRO}/setup.bash"
   cd "${WS_DIR}"
-  rosdep install --from-paths src --ignore-src --rosdistro "${ROS_DISTRO}" -r -y
+  rosdep install --from-paths src --ignore-src --rosdistro "${ROS_DISTRO}" -r -y --skip-keys ament_python
 
   log "Building workspace"
   colcon build --symlink-install
@@ -371,6 +384,7 @@ elif [[ "${AUTO_CONFIG_RPI}" -eq 0 ]] && is_raspberry_pi; then
   log "Skipping Raspberry Pi accessory auto-configuration (--no-rpi-autoconfig)"
 fi
 sync_submodules
+ensure_camera_ros_source
 setup_rosdep
 
 if [[ "${SKIP_BUILD}" -eq 0 ]]; then

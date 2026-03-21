@@ -72,8 +72,12 @@ def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
     if not frame.flags["C_CONTIGUOUS"]:
         frame = np.ascontiguousarray(frame)
 
-    if encoding == "rgb8":
+    enc = (encoding or "").lower()
+    if enc == "rgb8":
         fmt = QImage.Format_RGB888
+    elif enc == "bgr8" and hasattr(QImage, "Format_BGR888"):
+        # Qt >= 5.14 supports direct BGR888; avoid extra cvtColor copy.
+        fmt = QImage.Format_BGR888
     else:
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         fmt = QImage.Format_RGB888
@@ -818,17 +822,14 @@ class MainWindow(QWidget):
         age_s, fps = sub.stream_stats()
         info.setText(f"{fps:4.1f} FPS   |   age {age_s*1000:4.0f} ms")
 
-        # Keep per-frame work minimal:
-        #  - avoid cvtColor via Qt's BGR888/RGB888
-        #  - resize only when needed
-        target_w = max(2, label.width())
-        target_h = max(2, label.height())
-        if frame.shape[1] != target_w or frame.shape[0] != target_h:
-            # INTER_LINEAR is a good speed/quality trade for preview.
-            frame = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
-
+        # Keep per-frame Python work minimal; do scaling in Qt/C++.
         pix = frame_to_pix(frame, enc)
         _ = msg_ref  # keep backing ROS message alive until pixmap conversion is done
+        if not pix.isNull():
+            target_w = max(2, label.width())
+            target_h = max(2, label.height())
+            if pix.width() != target_w or pix.height() != target_h:
+                pix = pix.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.FastTransformation)
         label.setPixmap(pix)
 
     def _update_indicators(self) -> None:

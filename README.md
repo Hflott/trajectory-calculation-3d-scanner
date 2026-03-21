@@ -101,12 +101,25 @@ Default launch settings:
 - enabled by default (`enable_gpio_button:=true`)
 - pin `GPIO24` (`gpio_button_pin:=24`, BCM numbering)
 - active-low trigger (button to `GND`)
+- physical wiring for default: pin `18` (GPIO24) to pin `20` (GND)
 
 Example:
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
   capture_mode:=stream \
   gpio_button_pin:=24
+```
+
+If preview is laggy on Raspberry Pi, lower preview load:
+
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  capture_mode:=stream \
+  preview_width:=640 \
+  preview_height:=360 \
+  preview_fps:=12 \
+  preview_format:=BGR888 \
+  ui_fps:=10
 ```
 
 Wiring recommendation:

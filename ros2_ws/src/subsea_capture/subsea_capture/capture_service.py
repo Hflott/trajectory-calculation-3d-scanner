@@ -232,6 +232,7 @@ class CaptureService(Node):
         self.declare_parameter("preview_width", 960)
         self.declare_parameter("preview_height", 540)
         self.declare_parameter("preview_fps", 20)
+        self.declare_parameter("preview_format", "BGR888")
         self.declare_parameter("preview_role", "viewfinder")
 
         self.declare_parameter("cam0_namespace", "/cam0")
@@ -419,9 +420,12 @@ class CaptureService(Node):
             try:
                 chip = gpiod.Chip(os.path.basename(chip_name))
             except Exception as e:
-                self.get_logger().error(
-                    f"GPIO trigger disabled: failed to open chip '{chip_name}': {e}"
-                )
+                emsg = f"GPIO trigger disabled: failed to open chip '{chip_name}': {e}"
+                if "Permission denied" in str(e):
+                    emsg += (
+                        " (fix: sudo usermod -aG gpio $USER && newgrp gpio)"
+                    )
+                self.get_logger().error(emsg)
                 return
 
         try:
@@ -451,9 +455,10 @@ class CaptureService(Node):
                 line.request(consumer="subsea_capture", type=req_type, flags=flags)
                 self._gpio_line_obj = line
         except Exception as e:
-            self.get_logger().error(
-                f"GPIO trigger disabled: failed to request line {line_offset} on {chip_name}: {e}"
-            )
+            emsg = f"GPIO trigger disabled: failed to request line {line_offset} on {chip_name}: {e}"
+            if "Permission denied" in str(e):
+                emsg += " (fix: sudo usermod -aG gpio $USER && newgrp gpio)"
+            self.get_logger().error(emsg)
             try:
                 chip.close()
             except Exception:
@@ -881,6 +886,7 @@ class CaptureService(Node):
         w = int(self.get_parameter("preview_width").value)
         h = int(self.get_parameter("preview_height").value)
         fps = int(self.get_parameter("preview_fps").value)
+        fmt = str(self.get_parameter("preview_format").value).strip() or "BGR888"
         role = str(self.get_parameter("preview_role").value)
         frame_us = int(1_000_000 / max(1, fps))
 
@@ -889,7 +895,7 @@ class CaptureService(Node):
             "role": role,
             "width": w,
             "height": h,
-            "format": "RGB888",
+            "format": fmt,
             "FrameDurationLimits": [frame_us, frame_us],
             "use_node_time": False,
             "frame_id": frame_id,

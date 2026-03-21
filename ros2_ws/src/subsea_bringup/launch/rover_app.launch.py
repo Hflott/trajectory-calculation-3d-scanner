@@ -27,18 +27,21 @@ def generate_launch_description():
     capture_mode = LaunchConfiguration('capture_mode')
     enable_gpio_button = LaunchConfiguration('enable_gpio_button')
     gpio_button_pin = LaunchConfiguration('gpio_button_pin')
+    preview_width = LaunchConfiguration('preview_width')
+    preview_height = LaunchConfiguration('preview_height')
+    preview_fps = LaunchConfiguration('preview_fps')
+    preview_format = LaunchConfiguration('preview_format')
+    ui_fps = LaunchConfiguration('ui_fps')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
     manage_previews_bool = ParameterValue(manage_previews, value_type=bool)
     enable_gpio_button_bool = ParameterValue(enable_gpio_button, value_type=bool)
     gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
-
-    # Low-latency preview settings
-    preview_w = 960
-    preview_h = 540
-    preview_fps = 20
-    frame_us = int(1_000_000 / preview_fps)
+    preview_w_int = ParameterValue(preview_width, value_type=int)
+    preview_h_int = ParameterValue(preview_height, value_type=int)
+    preview_fps_int = ParameterValue(preview_fps, value_type=int)
+    ui_fps_int = ParameterValue(ui_fps, value_type=int)
 
     # Only start standalone camera_ros nodes if manage_previews:=false.
     cam_condition_no_respawn = IfCondition(
@@ -85,9 +88,8 @@ def generate_launch_description():
         parameters=[{
             'camera': 0,
             'role': 'viewfinder',
-            'width': preview_w,
-            'height': preview_h,
-            'FrameDurationLimits': [frame_us, frame_us],
+            'width': preview_w_int,
+            'height': preview_h_int,
             'use_node_time': False,
         }],
         respawn=False,
@@ -103,9 +105,8 @@ def generate_launch_description():
         parameters=[{
             'camera': 1,
             'role': 'viewfinder',
-            'width': preview_w,
-            'height': preview_h,
-            'FrameDurationLimits': [frame_us, frame_us],
+            'width': preview_w_int,
+            'height': preview_h_int,
             'use_node_time': False,
         }],
         respawn=False,
@@ -121,9 +122,8 @@ def generate_launch_description():
         parameters=[{
             'camera': 0,
             'role': 'viewfinder',
-            'width': preview_w,
-            'height': preview_h,
-            'FrameDurationLimits': [frame_us, frame_us],
+            'width': preview_w_int,
+            'height': preview_h_int,
             'use_node_time': False,
         }],
         respawn=True,
@@ -140,9 +140,8 @@ def generate_launch_description():
         parameters=[{
             'camera': 1,
             'role': 'viewfinder',
-            'width': preview_w,
-            'height': preview_h,
-            'FrameDurationLimits': [frame_us, frame_us],
+            'width': preview_w_int,
+            'height': preview_h_int,
             'use_node_time': False,
         }],
         respawn=True,
@@ -181,9 +180,10 @@ def generate_launch_description():
             'gnss_time_ref_topic': '/time_reference',
             'gnss_imu_topic': '/imu/data',
 
-            'preview_width': preview_w,
-            'preview_height': preview_h,
-            'preview_fps': preview_fps,
+            'preview_width': preview_w_int,
+            'preview_height': preview_h_int,
+            'preview_fps': preview_fps_int,
+            'preview_format': preview_format,
             'preview_role': 'viewfinder',
 
             # Make preview topics match the UI defaults:
@@ -205,7 +205,10 @@ def generate_launch_description():
     ui = Node(
         package='subsea_ui',
         executable='ui',
-        output='screen'
+        output='screen',
+        parameters=[{
+            'ui_fps': ui_fps_int,
+        }],
     )
 
     # When UI exits, shut down the whole launch (fixes "terminal never exits")
@@ -234,6 +237,11 @@ def generate_launch_description():
         DeclareLaunchArgument('capture_mode', default_value='stream'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
+        DeclareLaunchArgument('preview_width', default_value='960'),
+        DeclareLaunchArgument('preview_height', default_value='540'),
+        DeclareLaunchArgument('preview_fps', default_value='15'),
+        DeclareLaunchArgument('preview_format', default_value='BGR888'),
+        DeclareLaunchArgument('ui_fps', default_value='12'),
 
         *env_actions,
 

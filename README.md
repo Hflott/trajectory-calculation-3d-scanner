@@ -85,7 +85,7 @@ ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
-- `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference samples
+- `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
 
 If you need the old still-capture behavior (`rpicam-still`, with preview pause), override:
 ```bash

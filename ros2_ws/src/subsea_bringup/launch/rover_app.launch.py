@@ -33,6 +33,8 @@ def generate_launch_description():
     preview_fps = LaunchConfiguration('preview_fps')
     preview_format = LaunchConfiguration('preview_format')
     ui_fps = LaunchConfiguration('ui_fps')
+    odom_local_topic = LaunchConfiguration('odom_local_topic')
+    odom_global_topic = LaunchConfiguration('odom_global_topic')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -175,22 +177,30 @@ def generate_launch_description():
             # GNSS/IMU motion compensation workflows).
             'capture_mode': capture_mode,
             'stream_wait_s': 1.0,
+            'stream_initial_wait_s': 2.5,
             'stream_max_frame_age_s': 1.0,
+            'stream_buffer_len': 180,
+            'stream_pair_max_delta_ms': 80.0,
             'write_capture_metadata': True,
             'sensor_buffer_s': 20.0,
             'capture_event_topic': '/capture/events',
             'gnss_fix_topic': '/fix',
             'gnss_time_ref_topic': '/time_reference',
             'gnss_imu_topic': '/imu/data',
+            'odom_local_topic': odom_local_topic,
+            'odom_global_topic': odom_global_topic,
 
             'preview_width': preview_w_int,
             'preview_height': preview_h_int,
             'preview_fps': preview_fps_int,
             'preview_format': preview_format,
             'preview_role': 'viewfinder',
-            'preview_start_stagger_s': 0.9,
+            'preview_start_stagger_s': 0.2,
             'preview_restart_attempts': 3,
-            'preview_restart_delay_s': 0.8,
+            'preview_restart_delay_s': 0.2,
+            'preview_shutdown_timeout_s': 1.0,
+            'device_release_timeout_s': 1.0,
+            'capture_parallel': True,
 
             # Make preview topics match the UI defaults:
             'cam0_namespace': '/cam0',
@@ -245,7 +255,7 @@ def generate_launch_description():
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
         DeclareLaunchArgument('start_localization', default_value='false'),
-        DeclareLaunchArgument('capture_mode', default_value='still'),
+        DeclareLaunchArgument('capture_mode', default_value='stream'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
         DeclareLaunchArgument('gpio_button_debounce_ms', default_value='40'),
@@ -254,6 +264,8 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_fps', default_value='15'),
         DeclareLaunchArgument('preview_format', default_value='RGB888'),
         DeclareLaunchArgument('ui_fps', default_value='12'),
+        DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
+        DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),
 
         *env_actions,
 

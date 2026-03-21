@@ -23,9 +23,12 @@ from ament_index_python.packages import get_package_prefix
 from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
 from sensor_msgs.msg import Image, NavSatFix, TimeReference, Imu
+from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+
+StreamFrame = Tuple[Image, float, Optional[int]]
 
 
 def now_ros_time(node: Node) -> TimeMsg:
@@ -223,6 +226,8 @@ class CaptureService(Node):
         self.declare_parameter("stream_wait_s", 1.0)
         self.declare_parameter("stream_initial_wait_s", 5.0)
         self.declare_parameter("stream_max_frame_age_s", 1.0)
+        self.declare_parameter("stream_buffer_len", 120)
+        self.declare_parameter("stream_pair_max_delta_ms", 80.0)
         self.declare_parameter("write_capture_metadata", True)
         self.declare_parameter("sensor_buffer_s", 20.0)
 
@@ -251,6 +256,8 @@ class CaptureService(Node):
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
+        self.declare_parameter("odom_local_topic", "/odometry/local")
+        self.declare_parameter("odom_global_topic", "/odometry/global")
         self.declare_parameter("capture_event_topic", "/capture/events")
         self.declare_parameter("gpio_trigger_enable", False)
         self.declare_parameter("gpio_trigger_chip", "/dev/gpiochip0")
@@ -301,11 +308,16 @@ class CaptureService(Node):
         self._latest_cam1_msg: Optional[Image] = None
         self._latest_cam0_rx_mono: Optional[float] = None
         self._latest_cam1_rx_mono: Optional[float] = None
+        stream_len = max(5, int(self.get_parameter("stream_buffer_len").value))
+        self._buf_cam0: Deque[StreamFrame] = deque(maxlen=stream_len)
+        self._buf_cam1: Deque[StreamFrame] = deque(maxlen=stream_len)
 
         self._sensor_lock = threading.Lock()
         self._buf_fix: Deque[NavSatFix] = deque()
         self._buf_time_ref: Deque[TimeReference] = deque()
         self._buf_imu: Deque[Imu] = deque()
+        self._buf_odom_local: Deque[Odometry] = deque()
+        self._buf_odom_global: Deque[Odometry] = deque()
         self._gpio_mod = None
         self._gpio_chip = None
         self._gpio_line_obj = None
@@ -342,11 +354,17 @@ class CaptureService(Node):
         fix_topic = str(self.get_parameter("gnss_fix_topic").value)
         time_ref_topic = str(self.get_parameter("gnss_time_ref_topic").value)
         imu_topic = str(self.get_parameter("gnss_imu_topic").value)
+        odom_local_topic = str(self.get_parameter("odom_local_topic").value)
+        odom_global_topic = str(self.get_parameter("odom_global_topic").value)
         self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, sens_qos)
         self._time_ref_sub = self.create_subscription(TimeReference, time_ref_topic, self._on_time_ref, sens_qos)
         self._imu_sub = self.create_subscription(Imu, imu_topic, self._on_imu, sens_qos)
+        self._odom_local_sub = self.create_subscription(Odometry, odom_local_topic, self._on_odom_local, sens_qos)
+        self._odom_global_sub = self.create_subscription(Odometry, odom_global_topic, self._on_odom_global, sens_qos)
         self.get_logger().info(
-            f"Telemetry subscribers: fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic}"
+            "Telemetry subscribers: "
+            f"fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic} "
+            f"odom_local={odom_local_topic} odom_global={odom_global_topic}"
         )
         event_topic = str(self.get_parameter("capture_event_topic").value)
         self._capture_evt_pub = self.create_publisher(String, event_topic, 10)
@@ -750,6 +768,10 @@ class CaptureService(Node):
             self._buf_time_ref.popleft()
         while self._buf_imu and _stamp_to_ns(self._buf_imu[0].header.stamp) < cutoff_ns:
             self._buf_imu.popleft()
+        while self._buf_odom_local and _stamp_to_ns(self._buf_odom_local[0].header.stamp) < cutoff_ns:
+            self._buf_odom_local.popleft()
+        while self._buf_odom_global and _stamp_to_ns(self._buf_odom_global[0].header.stamp) < cutoff_ns:
+            self._buf_odom_global.popleft()
 
     def _on_fix(self, msg: NavSatFix) -> None:
         with self._sensor_lock:
@@ -766,15 +788,42 @@ class CaptureService(Node):
             self._buf_imu.append(msg)
             self._trim_sensor_buffers_locked()
 
+    def _on_odom_local(self, msg: Odometry) -> None:
+        with self._sensor_lock:
+            self._buf_odom_local.append(msg)
+            self._trim_sensor_buffers_locked()
+
+    def _on_odom_global(self, msg: Odometry) -> None:
+        with self._sensor_lock:
+            self._buf_odom_global.append(msg)
+            self._trim_sensor_buffers_locked()
+
+    def _msg_stamp_ns(self, msg: Image) -> Optional[int]:
+        try:
+            sec = int(msg.header.stamp.sec)
+            nsec = int(msg.header.stamp.nanosec)
+        except Exception:
+            return None
+        ns = sec * 1_000_000_000 + nsec
+        if ns <= 0:
+            return None
+        return ns
+
     def _on_cam0_image(self, msg: Image) -> None:
+        now_m = time.monotonic()
+        stamp_ns = self._msg_stamp_ns(msg)
         with self._stream_lock:
             self._latest_cam0_msg = msg
-            self._latest_cam0_rx_mono = time.monotonic()
+            self._latest_cam0_rx_mono = now_m
+            self._buf_cam0.append((msg, now_m, stamp_ns))
 
     def _on_cam1_image(self, msg: Image) -> None:
+        now_m = time.monotonic()
+        stamp_ns = self._msg_stamp_ns(msg)
         with self._stream_lock:
             self._latest_cam1_msg = msg
-            self._latest_cam1_rx_mono = time.monotonic()
+            self._latest_cam1_rx_mono = now_m
+            self._buf_cam1.append((msg, now_m, stamp_ns))
 
     def _latest_stream_snapshot(self) -> Tuple[Optional[Image], Optional[Image], Optional[float], Optional[float]]:
         with self._stream_lock:
@@ -784,6 +833,10 @@ class CaptureService(Node):
                 self._latest_cam0_rx_mono,
                 self._latest_cam1_rx_mono,
             )
+
+    def _stream_buffers_snapshot(self) -> Tuple[List[StreamFrame], List[StreamFrame]]:
+        with self._stream_lock:
+            return list(self._buf_cam0), list(self._buf_cam1)
 
     def _capture_mode(self) -> str:
         mode = str(self.get_parameter("capture_mode").value).strip().lower()
@@ -880,6 +933,44 @@ class CaptureService(Node):
             return None
         return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
 
+    def _nearest_odom_local(self, stamp_ns: int) -> Optional[Odometry]:
+        with self._sensor_lock:
+            msgs = list(self._buf_odom_local)
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
+
+    def _nearest_odom_global(self, stamp_ns: int) -> Optional[Odometry]:
+        with self._sensor_lock:
+            msgs = list(self._buf_odom_global)
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(_stamp_to_ns(m.header.stamp) - stamp_ns))
+
+    def _pick_stream_frame(
+        self,
+        frames: List[StreamFrame],
+        target_ns: int,
+        max_age_s: float,
+        now_m: float,
+    ) -> Optional[StreamFrame]:
+        best: Optional[StreamFrame] = None
+        best_score = float("inf")
+        for frame in frames:
+            _msg, rx_mono, stamp_ns = frame
+            age_s = now_m - rx_mono
+            if age_s > max_age_s:
+                continue
+            if stamp_ns is not None:
+                score = abs(float(stamp_ns - target_ns))
+            else:
+                # Keep unstamped frames as a fallback if a stream provides invalid header stamps.
+                score = 1e18 + age_s * 1e9
+            if score < best_score:
+                best = frame
+                best_score = score
+        return best
+
     def _camera_count_for_capture(self) -> Optional[int]:
         cam_count = _libcamera_camera_count()
         self._detected_cam_count = cam_count
@@ -962,6 +1053,68 @@ class CaptureService(Node):
                             float(imu.linear_acceleration.x),
                             float(imu.linear_acceleration.y),
                             float(imu.linear_acceleration.z),
+                        ],
+                    }
+
+                odom_local = self._nearest_odom_local(s_ns)
+                if odom_local is not None:
+                    odom_ns = _stamp_to_ns(odom_local.header.stamp)
+                    info["nearest_odom_local"] = {
+                        "stamp": _stamp_to_str(odom_local.header.stamp),
+                        "dt_ms": (odom_ns - s_ns) / 1_000_000.0,
+                        "frame_id": odom_local.header.frame_id or "",
+                        "child_frame_id": odom_local.child_frame_id or "",
+                        "position": [
+                            float(odom_local.pose.pose.position.x),
+                            float(odom_local.pose.pose.position.y),
+                            float(odom_local.pose.pose.position.z),
+                        ],
+                        "orientation_xyzw": [
+                            float(odom_local.pose.pose.orientation.x),
+                            float(odom_local.pose.pose.orientation.y),
+                            float(odom_local.pose.pose.orientation.z),
+                            float(odom_local.pose.pose.orientation.w),
+                        ],
+                        "linear_velocity": [
+                            float(odom_local.twist.twist.linear.x),
+                            float(odom_local.twist.twist.linear.y),
+                            float(odom_local.twist.twist.linear.z),
+                        ],
+                        "angular_velocity": [
+                            float(odom_local.twist.twist.angular.x),
+                            float(odom_local.twist.twist.angular.y),
+                            float(odom_local.twist.twist.angular.z),
+                        ],
+                    }
+
+                odom_global = self._nearest_odom_global(s_ns)
+                if odom_global is not None:
+                    odom_ns = _stamp_to_ns(odom_global.header.stamp)
+                    info["nearest_odom_global"] = {
+                        "stamp": _stamp_to_str(odom_global.header.stamp),
+                        "dt_ms": (odom_ns - s_ns) / 1_000_000.0,
+                        "frame_id": odom_global.header.frame_id or "",
+                        "child_frame_id": odom_global.child_frame_id or "",
+                        "position": [
+                            float(odom_global.pose.pose.position.x),
+                            float(odom_global.pose.pose.position.y),
+                            float(odom_global.pose.pose.position.z),
+                        ],
+                        "orientation_xyzw": [
+                            float(odom_global.pose.pose.orientation.x),
+                            float(odom_global.pose.pose.orientation.y),
+                            float(odom_global.pose.pose.orientation.z),
+                            float(odom_global.pose.pose.orientation.w),
+                        ],
+                        "linear_velocity": [
+                            float(odom_global.twist.twist.linear.x),
+                            float(odom_global.twist.twist.linear.y),
+                            float(odom_global.twist.twist.linear.z),
+                        ],
+                        "angular_velocity": [
+                            float(odom_global.twist.twist.angular.x),
+                            float(odom_global.twist.twist.angular.y),
+                            float(odom_global.twist.twist.angular.z),
                         ],
                     }
             metadata["cameras"][name] = info
@@ -1316,10 +1469,18 @@ class CaptureService(Node):
 
     def _stop_previews_managed(self) -> None:
         timeout_s = float(self.get_parameter("preview_shutdown_timeout_s").value)
+        # Stop both preview processes concurrently to minimize capture downtime.
+        workers: List[threading.Thread] = []
         if self._p0 is not None:
-            _stop_proc(self._p0, timeout_s=timeout_s)
+            t0 = threading.Thread(target=_stop_proc, args=(self._p0, timeout_s), daemon=True)
+            workers.append(t0)
+            t0.start()
         if self._p1 is not None:
-            _stop_proc(self._p1, timeout_s=timeout_s)
+            t1 = threading.Thread(target=_stop_proc, args=(self._p1, timeout_s), daemon=True)
+            workers.append(t1)
+            t1.start()
+        for t in workers:
+            t.join(timeout_s + 0.25)
         self._p0 = None
         self._p1 = None
 
@@ -1537,36 +1698,81 @@ class CaptureService(Node):
         wait_s = max(0.1, float(self.get_parameter("stream_wait_s").value))
         initial_wait_s = max(wait_s, float(self.get_parameter("stream_initial_wait_s").value))
         max_age_s = max(0.05, float(self.get_parameter("stream_max_frame_age_s").value))
-        pre0, pre1, _, _ = self._latest_stream_snapshot()
-        if (pre0 is None) or (require_cam1 and pre1 is None):
+        pair_slop_ns = int(max(1.0, float(self.get_parameter("stream_pair_max_delta_ms").value)) * 1_000_000.0)
+        trigger_ns = _stamp_to_ns(trigger_stamp)
+        pre0, pre1 = self._stream_buffers_snapshot()
+        if (not pre0) or (require_cam1 and not pre1):
             wait_s = initial_wait_s
             self.get_logger().info(
                 f"Stream capture warmup: waiting up to {wait_s:.1f}s for initial frames "
-                f"(cam0_seen={pre0 is not None}, cam1_seen={pre1 is not None}, cam1_required={require_cam1})"
+                f"(cam0_seen={bool(pre0)}, cam1_seen={bool(pre1)}, cam1_required={require_cam1})"
             )
         deadline = time.monotonic() + wait_s
 
-        msg0 = msg1 = None
+        sel0: Optional[StreamFrame] = None
+        sel1: Optional[StreamFrame] = None
+        pair_delta_ms: Optional[float] = None
         while True:
-            msg0, msg1, rx0, rx1 = self._latest_stream_snapshot()
+            buf0, buf1 = self._stream_buffers_snapshot()
             now_m = time.monotonic()
-            age0 = (now_m - rx0) if rx0 is not None else 1e9
-            age1 = (now_m - rx1) if rx1 is not None else 1e9
+            sel0 = self._pick_stream_frame(buf0, trigger_ns, max_age_s, now_m)
 
-            ok0 = (msg0 is not None) and (age0 <= max_age_s)
-            ok1 = (not require_cam1) or ((msg1 is not None) and (age1 <= max_age_s))
-            if ok0 and ok1:
+            sel1 = None
+            if require_cam1:
+                target1_ns = trigger_ns
+                if sel0 is not None and sel0[2] is not None:
+                    target1_ns = sel0[2]
+                sel1 = self._pick_stream_frame(buf1, target1_ns, max_age_s, now_m)
+
+            ok0 = sel0 is not None
+            ok1 = (not require_cam1) or (sel1 is not None)
+
+            pair_ok = True
+            pair_delta_ms = None
+            if require_cam1 and sel0 is not None and sel1 is not None and sel0[2] is not None and sel1[2] is not None:
+                pair_delta_ns = abs(sel0[2] - sel1[2])
+                pair_delta_ms = pair_delta_ns / 1_000_000.0
+                pair_ok = pair_delta_ns <= pair_slop_ns
+
+            if ok0 and ok1 and pair_ok:
                 break
+
             if now_m >= deadline:
+                age0 = (now_m - sel0[1]) if sel0 is not None else 1e9
+                age1 = (now_m - sel1[1]) if sel1 is not None else 1e9
+                pair_text = "n/a"
+                if pair_delta_ms is not None:
+                    pair_text = f"{pair_delta_ms:.2f}"
                 fail_msg = (
                     "CAPTURE FAILED (stream mode)\n"
                     f"cam0_ready={ok0} age_s={age0:.3f}\n"
                     f"cam1_required={require_cam1} cam1_ready={ok1} age_s={age1:.3f}\n"
+                    f"pair_delta_ms={pair_text} max_pair_delta_ms={pair_slop_ns/1_000_000.0:.2f}\n"
                     "No sufficiently fresh preview frames available."
                 )
                 self.get_logger().error(fail_msg)
                 return False, fail_msg, "", "", trigger_stamp
-            time.sleep(0.02)
+            time.sleep(0.01)
+
+        msg0 = sel0[0] if sel0 is not None else None
+        msg1 = sel1[0] if sel1 is not None else None
+        if msg0 is None:
+            fail_msg = "CAPTURE FAILED (stream mode): internal frame selection error (cam0 missing)"
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, "", "", trigger_stamp
+
+        if sel0 is not None:
+            age0 = max(0.0, time.monotonic() - sel0[1])
+            if sel1 is not None:
+                age1 = max(0.0, time.monotonic() - sel1[1])
+                self.get_logger().info(
+                    f"Stream frame pair selected: cam0_age_ms={age0*1000.0:.1f} "
+                    f"cam1_age_ms={age1*1000.0:.1f} pair_delta_ms={(pair_delta_ms if pair_delta_ms is not None else -1.0):.2f}"
+                )
+            else:
+                self.get_logger().info(
+                    f"Stream frame selected: cam0_age_ms={age0*1000.0:.1f}"
+                )
 
         if feedback_cb is not None:
             feedback_cb("encoding_stream_frames")

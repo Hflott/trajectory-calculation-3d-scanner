@@ -23,6 +23,7 @@ from ament_index_python.packages import get_package_prefix
 from subsea_interfaces.action import CapturePair as CapturePairAction
 from subsea_interfaces.srv import CapturePair
 from sensor_msgs.msg import Image, NavSatFix, TimeReference, Imu
+from std_msgs.msg import String
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
@@ -250,6 +251,7 @@ class CaptureService(Node):
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
+        self.declare_parameter("capture_event_topic", "/capture/events")
         self.declare_parameter("gpio_trigger_enable", False)
         self.declare_parameter("gpio_trigger_chip", "/dev/gpiochip0")
         self.declare_parameter("gpio_trigger_line", 24)
@@ -346,6 +348,9 @@ class CaptureService(Node):
         self.get_logger().info(
             f"Telemetry subscribers: fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic}"
         )
+        event_topic = str(self.get_parameter("capture_event_topic").value)
+        self._capture_evt_pub = self.create_publisher(String, event_topic, 10)
+        self.get_logger().info(f"Capture event publisher: {event_topic}")
 
         self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
         self.action = ActionServer(
@@ -658,12 +663,48 @@ class CaptureService(Node):
                 quality,
                 feedback_cb=None,
             )
+        self._publish_capture_event(
+            source="gpio",
+            session_id=session,
+            success=success,
+            message=message,
+            cam0_path=cam0_path,
+            cam1_path=cam1_path,
+            stamp=stamp,
+        )
         if success:
             self.get_logger().info(
                 f"GPIO capture OK stamp={_stamp_to_str(stamp)} cam0={cam0_path} cam1={cam1_path}"
             )
         else:
             self.get_logger().error(f"GPIO capture failed: {message}")
+
+    def _publish_capture_event(
+        self,
+        source: str,
+        session_id: str,
+        success: bool,
+        message: str,
+        cam0_path: str,
+        cam1_path: str,
+        stamp: TimeMsg,
+    ) -> None:
+        payload = {
+            "source": source,
+            "session_id": session_id or "",
+            "success": bool(success),
+            "message": message or "",
+            "cam0_path": cam0_path or "",
+            "cam1_path": cam1_path or "",
+            "stamp_sec": int(stamp.sec),
+            "stamp_nanosec": int(stamp.nanosec),
+        }
+        try:
+            msg = String()
+            msg.data = json.dumps(payload, separators=(",", ":"))
+            self._capture_evt_pub.publish(msg)
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish capture event: {e}")
 
     def _cleanup_gpio_trigger(self) -> None:
         if self._gpio_timer is not None:
@@ -1604,6 +1645,15 @@ class CaptureService(Node):
                 req.output_dir,
                 int(req.jpeg_quality),
             )
+        self._publish_capture_event(
+            source="service",
+            session_id=req.session_id,
+            success=success,
+            message=message,
+            cam0_path=cam0_path,
+            cam1_path=cam1_path,
+            stamp=stamp,
+        )
         res.success = success
         res.message = message
         res.cam0_path = cam0_path
@@ -1642,6 +1692,15 @@ class CaptureService(Node):
         result.cam0_path = cam0_path
         result.cam1_path = cam1_path
         result.stamp = stamp
+        self._publish_capture_event(
+            source="action",
+            session_id=goal.session_id,
+            success=success,
+            message=message,
+            cam0_path=cam0_path,
+            cam1_path=cam1_path,
+            stamp=stamp,
+        )
 
         if success:
             goal_handle.succeed()

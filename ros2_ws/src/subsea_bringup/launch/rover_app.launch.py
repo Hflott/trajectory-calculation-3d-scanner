@@ -178,6 +178,7 @@ def generate_launch_description():
             'stream_max_frame_age_s': 1.0,
             'write_capture_metadata': True,
             'sensor_buffer_s': 20.0,
+            'capture_event_topic': '/capture/events',
             'gnss_fix_topic': '/fix',
             'gnss_time_ref_topic': '/time_reference',
             'gnss_imu_topic': '/imu/data',
@@ -217,6 +218,7 @@ def generate_launch_description():
             'ui_fps': ui_fps_int,
             'preview_fps': preview_fps_int,
             'capture_node': '/capture_service',
+            'capture_event_topic': '/capture/events',
         }],
     )
 

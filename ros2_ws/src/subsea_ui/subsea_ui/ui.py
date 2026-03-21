@@ -13,8 +13,9 @@ import os
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -52,6 +53,7 @@ from rclpy.qos import (
 from rclpy.task import Future
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import Image, Imu, NavSatFix, TimeReference
+from std_msgs.msg import String
 from cv_bridge import CvBridge
 
 from subsea_interfaces.action import CapturePair as CapturePairAction
@@ -359,6 +361,7 @@ class AppNode(Node):
         self.declare_parameter("capture_action", cfg.get("capture_action", "capture_pair"))
         self.declare_parameter("prefer_capture_action", bool(cfg.get("prefer_capture_action", True)))
         self.declare_parameter("capture_node", cfg.get("capture_node", "/capture_service"))
+        self.declare_parameter("capture_event_topic", cfg.get("capture_event_topic", "/capture/events"))
         self.declare_parameter("mock_camera_node", cfg.get("mock_camera_node", "/mock_camera_publisher"))
         self.declare_parameter("gnss_fix_topic", cfg.get("gnss_fix_topic", "/fix"))
         self.declare_parameter("gnss_time_ref_topic", cfg.get("gnss_time_ref_topic", "/time_reference"))
@@ -379,6 +382,35 @@ class AppNode(Node):
             self,
             str(self.get_parameter("capture_node").value),
         )
+        self._capture_event_lock = threading.Lock()
+        self._capture_events: Deque[Dict[str, Any]] = deque(maxlen=64)
+        evt_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=20,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        evt_topic = str(self.get_parameter("capture_event_topic").value)
+        self._capture_evt_sub = self.create_subscription(String, evt_topic, self._on_capture_event, evt_qos)
+        self.get_logger().info(f"Capture event sub: {evt_topic}")
+
+    def _on_capture_event(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except Exception:
+            return
+        if not isinstance(payload, dict):
+            return
+        with self._capture_event_lock:
+            self._capture_events.append(payload)
+
+    def pop_capture_events(self) -> List[Dict[str, Any]]:
+        with self._capture_event_lock:
+            if not self._capture_events:
+                return []
+            out = list(self._capture_events)
+            self._capture_events.clear()
+            return out
 
     def capture_pair_async(self, session_id: str, out_dir: str, quality: int = 95):
         if self._prefer_action and self.action_cli.server_is_ready():
@@ -526,18 +558,9 @@ class MainWindow(QWidget):
             info.setStyleSheet("color:#B0B0B0; padding:4px 2px;")
 
         # --- Actions
-        self.capture_btn = QPushButton("CAPTURE (12MP JPEG)")
-        self.capture_btn.setMinimumHeight(40)
-        self.capture_btn.setStyleSheet("font-size:24px; font-weight:700;")
-        self.capture_btn.clicked.connect(self.on_capture)
-
-        self.full_btn = QPushButton("Toggle Fullscreen (F11)")
-        self.full_btn.setMinimumHeight(40)
-        self.full_btn.setStyleSheet("font-size:18px;")
-        self.full_btn.clicked.connect(self.toggle_fullscreen)
-
         self.quit_btn = QPushButton("Quit")
-        self.quit_btn.setMinimumHeight(40)
+        self.quit_btn.setMinimumHeight(34)
+        self.quit_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
         self.quit_btn.clicked.connect(self.close)
 
         # Store last pixmaps so we can rescale on resize
@@ -551,6 +574,7 @@ class MainWindow(QWidget):
         # last frame on-screen instead of flashing "no signal".
         self._preview_paused: bool = False
         self._ind_state = {"cam0": None, "cam1": None, "srv": None}
+        self._last_capture_event_key: Optional[str] = None
 
         # User-settable values (persisted)
         self.out_dir = str(self.ros_node.get_parameter("output_dir").value)
@@ -565,6 +589,7 @@ class MainWindow(QWidget):
         top_row.addWidget(self.ind_cam1)
         top_row.addWidget(self.ind_srv)
         top_row.addStretch(1)
+        top_row.addWidget(self.quit_btn, 0, Qt.AlignRight)
 
         preview_row = QHBoxLayout()
         preview_row.setSpacing(10)
@@ -584,18 +609,11 @@ class MainWindow(QWidget):
         preview_row.addLayout(left, 1)
         preview_row.addLayout(right, 1)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(10)
-        btn_row.addWidget(self.capture_btn, 3)
-        btn_row.addWidget(self.full_btn, 2)
-        btn_row.addWidget(self.quit_btn, 1)
-
         preview_root = QVBoxLayout()
         preview_root.setContentsMargins(10, 10, 10, 10)
         preview_root.setSpacing(10)
         preview_root.addLayout(top_row, 0)
         preview_root.addLayout(preview_row, 1)
-        preview_root.addLayout(btn_row, 0)
         preview_root.addWidget(self.status, 0)
 
         preview_tab = QWidget()
@@ -807,11 +825,6 @@ class MainWindow(QWidget):
         self.timer.timeout.connect(self.refresh_preview)
         self.timer.start(max(10, int(1000 / self.ui_fps)))
 
-        # Capture future polling
-        self._capture_future = None
-        self._capture_poll = QTimer(self)
-        self._capture_poll.timeout.connect(self._poll_capture_future)
-
         QTimer.singleShot(0, self._set_default_window_geometry)
         self._log(f"UI started. cam0_topic={self.cam0.topic} cam1_topic={self.cam1.topic}")
 
@@ -832,19 +845,10 @@ class MainWindow(QWidget):
     def _apply_compact_mode_if_small(self, screen_w: int, screen_h: int):
         if screen_h > 650 and screen_w > 1100:
             return
-        self.capture_btn.setMinimumHeight(34)
-        self.full_btn.setMinimumHeight(34)
-        self.quit_btn.setMinimumHeight(34)
-        self.capture_btn.setStyleSheet("font-size:17px; font-weight:700;")
-        self.full_btn.setStyleSheet("font-size:14px;")
+        self.quit_btn.setMinimumHeight(30)
+        self.quit_btn.setStyleSheet("font-size:13px; padding:2px 8px;")
         for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
             lab.setMinimumSize(110, 70)
-
-    def toggle_fullscreen(self):
-        if self.windowState() & Qt.WindowFullScreen:
-            self.setWindowState(self.windowState() & ~Qt.WindowFullScreen)
-        else:
-            self.setWindowState(self.windowState() | Qt.WindowFullScreen)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -852,15 +856,6 @@ class MainWindow(QWidget):
         self._apply_capture_pixmaps()
 
     def keyPressEvent(self, e):
-        # Touch UIs often still have a keyboard during development; make common
-        # actions quick.
-        if e.key() == Qt.Key_F11:
-            self.toggle_fullscreen()
-            return
-        if e.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
-            if self.capture_btn.isEnabled():
-                self.on_capture()
-            return
         super().keyPressEvent(e)
 
     def refresh_preview(self):
@@ -871,7 +866,75 @@ class MainWindow(QWidget):
         else:
             self._render_preview(self.prev0, self.prev0_info, self.cam0, "Cam0")
             self._render_preview(self.prev1, self.prev1_info, self.cam1, "Cam1")
+        self._consume_capture_events()
         self._refresh_gnss()
+
+    def _consume_capture_events(self) -> None:
+        events = self.ros_node.pop_capture_events()
+        if not events:
+            return
+
+        for ev in events:
+            source = str(ev.get("source", "")).strip().lower()
+            if source != "gpio":
+                continue
+
+            session = str(ev.get("session_id", ""))
+            try:
+                sec = int(ev.get("stamp_sec", 0))
+            except Exception:
+                sec = 0
+            try:
+                nsec = int(ev.get("stamp_nanosec", 0))
+            except Exception:
+                nsec = 0
+
+            key = f"{source}|{session}|{sec}|{nsec}"
+            if self._last_capture_event_key == key:
+                continue
+            self._last_capture_event_key = key
+
+            success = bool(ev.get("success", False))
+            message = str(ev.get("message", ""))
+            cam0_path = str(ev.get("cam0_path", ""))
+            cam1_path = str(ev.get("cam1_path", ""))
+
+            if success:
+                self.status.setText("Status: GPIO capture OK")
+                self._log(f"GPIO capture OK: session={session} cam0={cam0_path} cam1={cam1_path}")
+                self._cap0_pix = load_jpeg_as_pix(cam0_path)
+                self._cap1_pix = load_jpeg_as_pix(cam1_path)
+                self._res0_pix = self._cap0_pix
+                self._res1_pix = self._cap1_pix
+                self._apply_capture_pixmaps()
+                self.capture_details.setPlainText(
+                    "\n".join(
+                        [
+                            f"source: gpio",
+                            f"session: {session}",
+                            f"stamp: {sec}.{nsec:09d}",
+                            f"cam0:  {cam0_path}",
+                            f"cam1:  {cam1_path}",
+                            f"msg:   {message}",
+                        ]
+                    )
+                )
+            else:
+                self.status.setText("Status: GPIO capture FAILED (see details)")
+                self._log(f"GPIO capture failed: session={session} msg={message}")
+                self.cap0.setText(message[:800])
+                self.cap1.setText(message[:800])
+                self.capture_details.setPlainText(
+                    "\n".join(
+                        [
+                            f"source: gpio",
+                            f"session: {session}",
+                            f"stamp: {sec}.{nsec:09d}",
+                            "",
+                            message,
+                        ]
+                    )
+                )
 
     def _refresh_gnss(self) -> None:
         fix, time_ref, imu, fix_rx, time_rx, imu_rx = self.gnss.snapshot()
@@ -947,7 +1010,7 @@ class MainWindow(QWidget):
             target_w = max(2, label.width())
             target_h = max(2, label.height())
             if pix.width() != target_w or pix.height() != target_h:
-                pix = pix.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.FastTransformation)
+                pix = pix.scaled(target_w, target_h, Qt.KeepAspectRatioByExpanding, Qt.FastTransformation)
         label.setPixmap(pix)
 
     def _update_indicators(self) -> None:
@@ -974,92 +1037,6 @@ class MainWindow(QWidget):
         set_ind("cam0", self.ind_cam0, ok=self.cam0.got_first_frame() and age0 < 0.7, warn=self.cam0.got_first_frame(), paused=paused)
         set_ind("cam1", self.ind_cam1, ok=self.cam1.got_first_frame() and age1 < 0.7, warn=self.cam1.got_first_frame(), paused=paused)
         set_ind("srv", self.ind_srv, ok=self.ros_node.service_ready(), warn=False)
-
-        # Gate capture button on service readiness
-        self.capture_btn.setEnabled(self.ros_node.service_ready() and self._capture_future is None)
-
-    def on_capture(self):
-        if not self.ros_node.service_ready():
-            self.status.setText("Status: capture service not ready")
-            self._log("Capture refused: service not ready")
-            return
-
-        # Apply current settings
-        self.out_dir = self.out_dir_edit.text().strip() or self.out_dir
-        os.makedirs(self.out_dir, exist_ok=True)
-        self.jpeg_quality = int(self.quality_spin.value())
-
-        self.capture_btn.setEnabled(False)
-        self.capture_btn.setText("CAPTURING…")
-        self.status.setText("Status: capturing…")
-        self._preview_paused = True
-
-        session = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self._capture_started_mono = time.monotonic()
-        self._capture_future = self.ros_node.capture_pair_async(session, self.out_dir, self.jpeg_quality)
-        self._log(f"Capture requested: session={session} out_dir={self.out_dir} q={self.jpeg_quality}")
-        self._capture_poll.start(50)
-
-    def _poll_capture_future(self):
-        fut = self._capture_future
-        if fut is None or not fut.done():
-            # Safety: surface hung service calls
-            if fut is not None and (time.monotonic() - self._capture_started_mono) > 12.0:
-                self.status.setText("Status: capture timeout (no response)")
-                self._log("Capture timeout (>12s)")
-                self._capture_poll.stop()
-                self._capture_future = None
-                self._preview_paused = False
-                self.capture_btn.setEnabled(True)
-                self.capture_btn.setText("CAPTURE (12MP JPEG)")
-            return
-
-        self._capture_poll.stop()
-        self._capture_future = None
-        self._preview_paused = False
-
-        try:
-            resp = fut.result()
-        except Exception as e:
-            self.status.setText(f"Status: capture call failed: {e}")
-            self._log(f"Capture call failed: {e}")
-            self.capture_btn.setEnabled(True)
-            self.capture_btn.setText("CAPTURE (12MP JPEG)")
-            return
-
-        if (resp is None) or (not resp.success):
-            msg = "(no response)" if resp is None else resp.message
-            self.status.setText("Status: CAPTURE FAILED (see details)")
-            self._log("Capture failed")
-            # Show error in capture boxes so it’s visible on-screen
-            self.cap0.setText(msg[:800])
-            self.cap1.setText(msg[:800])
-            self.capture_details.setPlainText(msg)
-        else:
-            self.status.setText("Status: capture OK")
-            self._log(f"Capture OK: cam0={resp.cam0_path} cam1={resp.cam1_path}")
-            self._cap0_pix = load_jpeg_as_pix(resp.cam0_path)
-            self._cap1_pix = load_jpeg_as_pix(resp.cam1_path)
-            self._res0_pix = self._cap0_pix
-            self._res1_pix = self._cap1_pix
-            self._apply_capture_pixmaps()
-            self.tabs.setCurrentIndex(self._tab_idx_capture)
-
-            self.capture_details.setPlainText(
-                "\n".join(
-                    [
-                        f"stamp: {resp.stamp.sec}.{resp.stamp.nanosec:09d}",
-                        f"cam0:  {resp.cam0_path}",
-                        f"cam1:  {resp.cam1_path}",
-                        f"out:   {self.out_dir}",
-                        f"q:     {self.jpeg_quality}",
-                        f"msg:   {resp.message}",
-                    ]
-                )
-            )
-
-        self.capture_btn.setEnabled(True)
-        self.capture_btn.setText("CAPTURE (12MP JPEG)")
 
     def _apply_capture_pixmaps(self):
         def setpix(label: QLabel, pix: Optional[QPixmap]):

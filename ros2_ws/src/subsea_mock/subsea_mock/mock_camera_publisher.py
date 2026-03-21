@@ -9,22 +9,6 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 
 
-def _make_frame(w: int, h: int, t: float, hue_offset: float) -> np.ndarray:
-    # Simple animated gradient to make motion obvious in the UI.
-    x = np.linspace(0, 1, w, dtype=np.float32)
-    y = np.linspace(0, 1, h, dtype=np.float32)[:, None]
-    phase = (t * 0.3 + hue_offset) % 1.0
-    r = (0.5 + 0.5 * np.sin(2 * math.pi * (x + phase)))[None, :]
-    g = (0.5 + 0.5 * np.sin(2 * math.pi * (y + phase)))[..., None]
-    b = (0.5 + 0.5 * np.sin(2 * math.pi * (x + y + phase)))
-
-    frame = np.zeros((h, w, 3), dtype=np.uint8)
-    frame[..., 2] = (r * 255).astype(np.uint8)
-    frame[..., 1] = (g * 255).astype(np.uint8).reshape(h, 1)
-    frame[..., 0] = (b * 255).astype(np.uint8)
-    return frame
-
-
 class MockCameraPublisher(Node):
     def __init__(self):
         super().__init__("mock_camera_publisher")
@@ -43,6 +27,10 @@ class MockCameraPublisher(Node):
 
         self._pub0 = self.create_publisher(Image, self._cam0_topic, 1)
         self._pub1 = self.create_publisher(Image, self._cam1_topic, 1)
+        self._x = np.linspace(0.0, 1.0, self._w, dtype=np.float32)[None, :]
+        self._y = np.linspace(0.0, 1.0, self._h, dtype=np.float32)[:, None]
+        self._frame0 = np.empty((self._h, self._w, 3), dtype=np.uint8)
+        self._frame1 = np.empty((self._h, self._w, 3), dtype=np.uint8)
 
         self._t0 = time.time()
         self._timer = self.create_timer(1.0 / self._fps, self._on_timer)
@@ -81,12 +69,25 @@ class MockCameraPublisher(Node):
         msg.data = frame.tobytes()
         pub.publish(msg)
 
+    def _make_frame_inplace(self, dst: np.ndarray, t: float, hue_offset: float) -> None:
+        # Keep allocations low by reusing a preallocated output frame.
+        phase = (t * 0.3 + hue_offset) % 1.0
+        dst[..., 2] = (
+            (0.5 + 0.5 * np.sin(2 * math.pi * (self._x + phase))) * 255
+        ).astype(np.uint8)
+        dst[..., 1] = (
+            (0.5 + 0.5 * np.sin(2 * math.pi * (self._y + phase))) * 255
+        ).astype(np.uint8)
+        dst[..., 0] = (
+            (0.5 + 0.5 * np.sin(2 * math.pi * (self._x + self._y + phase))) * 255
+        ).astype(np.uint8)
+
     def _on_timer(self) -> None:
         t = time.time() - self._t0
-        frame0 = _make_frame(self._w, self._h, t, 0.0)
-        frame1 = _make_frame(self._w, self._h, t, 0.4)
-        self._publish(self._pub0, frame0)
-        self._publish(self._pub1, frame1)
+        self._make_frame_inplace(self._frame0, t, 0.0)
+        self._make_frame_inplace(self._frame1, t, 0.4)
+        self._publish(self._pub0, self._frame0)
+        self._publish(self._pub1, self._frame1)
 
 
 def main():

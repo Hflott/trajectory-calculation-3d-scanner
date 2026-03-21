@@ -85,8 +85,8 @@ def frame_to_pix(frame: np.ndarray, encoding: str) -> QPixmap:
         fmt = QImage.Format_RGB888
 
     h, w, _ = frame.shape
-    # Detach from numpy buffer to avoid artifacts from reused transport buffers.
-    qimg = QImage(frame.data, w, h, frame.strides[0], fmt).copy()
+    # fromImage() performs the conversion/copy into a pixmap immediately.
+    qimg = QImage(frame.data, w, h, frame.strides[0], fmt)
     return QPixmap.fromImage(qimg)
 
 
@@ -250,9 +250,6 @@ class ImageSub(Node):
             except Exception as e:
                 self._warn_bad_frame(msg, f"cv_bridge conversion failed: {e}")
                 return
-        else:
-            # Keep a private copy to avoid rendering from a reused shared buffer.
-            frame = frame.copy()
         now_m = time.monotonic()
         with self._lock:
             self._latest = frame

@@ -311,6 +311,8 @@ class CaptureService(Node):
         self._relay_pub0 = None
         self._relay_pub1 = None
         self._relay_timer = None
+        self._relay_width = max(64, int(self.get_parameter("preview_relay_width").value))
+        self._relay_height = max(64, int(self.get_parameter("preview_relay_height").value))
         self._relay_last_cam0_msg_id: Optional[int] = None
         self._relay_last_cam1_msg_id: Optional[int] = None
         self._relay_last_warn_mono = 0.0
@@ -333,6 +335,9 @@ class CaptureService(Node):
         self._buf_imu: Deque[Imu] = deque()
         self._buf_odom_local: Deque[Odometry] = deque()
         self._buf_odom_global: Deque[Odometry] = deque()
+        self._sensor_keep_s = max(2.0, float(self.get_parameter("sensor_buffer_s").value))
+        self._sensor_trim_period_s = 0.25
+        self._next_sensor_trim_mono = 0.0
         self._gpio_mod = None
         self._gpio_chip = None
         self._gpio_line_obj = None
@@ -341,6 +346,16 @@ class CaptureService(Node):
         self._gpio_prev_pressed = False
         self._gpio_pressed_since_mono: Optional[float] = None
         self._gpio_last_trigger_mono = 0.0
+        self._gpio_line_offset = int(self.get_parameter("gpio_trigger_line").value)
+        self._gpio_active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+        self._gpio_debounce_s = max(
+            0.0,
+            float(self.get_parameter("gpio_trigger_debounce_ms").value) / 1000.0,
+        )
+        self._gpio_cooldown_s = max(
+            0.05,
+            float(self.get_parameter("gpio_trigger_cooldown_ms").value) / 1000.0,
+        )
         self._gpio_capture_thread = None
 
         img_qos = QoSProfile(
@@ -453,6 +468,7 @@ class CaptureService(Node):
     def _on_set_parameters(self, params) -> SetParametersResult:
         restart_reasons: List[str] = []
         relay_reasons: List[str] = []
+        sensor_keep_s: Optional[float] = None
         for p in params:
             if p.name == "preview_fps":
                 try:
@@ -514,11 +530,22 @@ class CaptureService(Node):
                 "ui_cam1_topic",
             ):
                 relay_reasons.append(f"{p.name}={p.value}")
+            elif p.name == "sensor_buffer_s":
+                try:
+                    v = float(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="sensor_buffer_s must be a number")
+                sensor_keep_s = max(2.0, v)
 
         if restart_reasons:
             self._request_preview_reconfigure(", ".join(restart_reasons))
         if relay_reasons:
             self._restart_preview_relay(", ".join(relay_reasons))
+        if sensor_keep_s is not None:
+            with self._sensor_lock:
+                self._sensor_keep_s = sensor_keep_s
+                self._next_sensor_trim_mono = 0.0
+                self._trim_sensor_buffers_locked(force=True)
         return SetParametersResult(successful=True, reason="")
 
     def _request_preview_reconfigure(self, reason: str) -> None:
@@ -651,6 +678,8 @@ class CaptureService(Node):
             return
 
         fps = max(1, int(self.get_parameter("preview_relay_fps").value))
+        self._relay_width = max(64, int(self.get_parameter("preview_relay_width").value))
+        self._relay_height = max(64, int(self.get_parameter("preview_relay_height").value))
         self._relay_last_cam0_msg_id = None
         self._relay_last_cam1_msg_id = None
         self._relay_timer = self.create_timer(1.0 / float(fps), self._publish_preview_relay)
@@ -699,6 +728,32 @@ class CaptureService(Node):
         height: int,
         default_frame_id: str,
     ) -> None:
+        src_enc = (src.encoding or "").lower().strip()
+        src_w = int(src.width)
+        src_h = int(src.height)
+        src_step = int(src.step)
+        if (
+            src_enc == "bgr8"
+            and src_w == int(width)
+            and src_h == int(height)
+            and src_step >= (src_w * 3)
+        ):
+            if src.header.frame_id:
+                # Fast path: direct relay without decode/resize/re-encode.
+                pub.publish(src)
+            else:
+                out = Image()
+                out.header.stamp = src.header.stamp
+                out.header.frame_id = default_frame_id
+                out.height = src_h
+                out.width = src_w
+                out.encoding = "bgr8"
+                out.is_bigendian = bool(src.is_bigendian)
+                out.step = src_step
+                out.data = src.data
+                pub.publish(out)
+            return
+
         frame = self._imgmsg_to_bgr(src)
         src_h, src_w = frame.shape[:2]
         if src_w != width or src_h != height:
@@ -720,8 +775,8 @@ class CaptureService(Node):
         if self._relay_pub0 is None and self._relay_pub1 is None:
             return
 
-        width = max(64, int(self.get_parameter("preview_relay_width").value))
-        height = max(64, int(self.get_parameter("preview_relay_height").value))
+        width = self._relay_width
+        height = self._relay_height
         msg0, msg1, _rx0, _rx1 = self._latest_stream_snapshot()
 
         if self._relay_pub0 is not None and msg0 is not None:
@@ -765,9 +820,19 @@ class CaptureService(Node):
             return
 
         chip_name = str(self.get_parameter("gpio_trigger_chip").value)
-        line_offset = int(self.get_parameter("gpio_trigger_line").value)
-        active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+        self._gpio_line_offset = int(self.get_parameter("gpio_trigger_line").value)
+        line_offset = self._gpio_line_offset
+        self._gpio_active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+        active_low = self._gpio_active_low
         poll_ms = max(5, int(self.get_parameter("gpio_trigger_poll_ms").value))
+        self._gpio_debounce_s = max(
+            0.0,
+            float(self.get_parameter("gpio_trigger_debounce_ms").value) / 1000.0,
+        )
+        self._gpio_cooldown_s = max(
+            0.05,
+            float(self.get_parameter("gpio_trigger_cooldown_ms").value) / 1000.0,
+        )
 
         chip = None
         try:
@@ -832,14 +897,14 @@ class CaptureService(Node):
         self.get_logger().info(
             f"GPIO trigger enabled: chip={chip_name} line={line_offset} "
             f"active_low={active_low} poll_ms={poll_ms} "
-            f"debounce_ms={int(self.get_parameter('gpio_trigger_debounce_ms').value)} "
+            f"debounce_ms={int(self._gpio_debounce_s * 1000.0)} "
             f"initial_pressed={self._gpio_prev_pressed}"
         )
 
     def _read_gpio_pressed(self) -> Optional[bool]:
         raw = None
-        line_offset = int(self.get_parameter("gpio_trigger_line").value)
-        active_low = bool(self.get_parameter("gpio_trigger_active_low").value)
+        line_offset = self._gpio_line_offset
+        active_low = self._gpio_active_low
 
         try:
             if self._gpio_req is not None:
@@ -869,7 +934,6 @@ class CaptureService(Node):
             return
 
         now_m = time.monotonic()
-        debounce_s = max(0.0, float(self.get_parameter("gpio_trigger_debounce_ms").value) / 1000.0)
 
         if pressed:
             if self._gpio_pressed_since_mono is None:
@@ -880,14 +944,13 @@ class CaptureService(Node):
         stable_pressed = bool(
             pressed
             and self._gpio_pressed_since_mono is not None
-            and ((now_m - self._gpio_pressed_since_mono) >= debounce_s)
+            and ((now_m - self._gpio_pressed_since_mono) >= self._gpio_debounce_s)
         )
 
         # Trigger on stable press edge only.
         if stable_pressed and not self._gpio_prev_pressed:
             now_m = time.monotonic()
-            cooldown_s = max(0.05, float(self.get_parameter("gpio_trigger_cooldown_ms").value) / 1000.0)
-            if (now_m - self._gpio_last_trigger_mono) >= cooldown_s:
+            if (now_m - self._gpio_last_trigger_mono) >= self._gpio_cooldown_s:
                 self._gpio_last_trigger_mono = now_m
                 self._on_gpio_trigger()
         self._gpio_prev_pressed = stable_pressed
@@ -1001,10 +1064,12 @@ class CaptureService(Node):
         self._gpio_chip = None
         self._gpio_mod = None
 
-    def _trim_sensor_buffers_locked(self) -> None:
-        keep_s = float(self.get_parameter("sensor_buffer_s").value)
-        keep_s = max(2.0, keep_s)
-        cutoff_ns = _stamp_to_ns(now_ros_time(self)) - int(keep_s * 1_000_000_000)
+    def _trim_sensor_buffers_locked(self, force: bool = False) -> None:
+        now_m = time.monotonic()
+        if (not force) and (now_m < self._next_sensor_trim_mono):
+            return
+        self._next_sensor_trim_mono = now_m + self._sensor_trim_period_s
+        cutoff_ns = _stamp_to_ns(now_ros_time(self)) - int(self._sensor_keep_s * 1_000_000_000)
 
         while self._buf_fix and _stamp_to_ns(self._buf_fix[0].header.stamp) < cutoff_ns:
             self._buf_fix.popleft()
@@ -1122,8 +1187,6 @@ class CaptureService(Node):
                 )
                 if enc == "rgb8":
                     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                else:
-                    frame = frame.copy()
                 return frame
             if enc in ("bgra8", "rgba8") and step >= (w * 4):
                 frame4 = np.ndarray(

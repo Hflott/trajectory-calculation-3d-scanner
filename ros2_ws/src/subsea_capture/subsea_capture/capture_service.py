@@ -251,6 +251,9 @@ class CaptureService(Node):
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
         self.declare_parameter("preview_restart_delay_s", 0.6)
+        self.declare_parameter("preview_watchdog_enable", True)
+        self.declare_parameter("preview_watchdog_period_s", 1.0)
+        self.declare_parameter("preview_watchdog_min_restart_interval_s", 2.0)
 
         self.declare_parameter("cam0_namespace", "/cam0")
         self.declare_parameter("cam1_namespace", "/cam1")
@@ -312,6 +315,9 @@ class CaptureService(Node):
         self._relay_pub0 = None
         self._relay_pub1 = None
         self._relay_timer = None
+        self._preview_watchdog_timer = None
+        self._preview_watchdog_lock = threading.Lock()
+        self._preview_watchdog_last_restart_mono = 0.0
         self._relay_width = max(64, int(self.get_parameter("preview_relay_width").value))
         self._relay_height = max(64, int(self.get_parameter("preview_relay_height").value))
         self._relay_last_cam0_msg_id: Optional[int] = None
@@ -430,6 +436,7 @@ class CaptureService(Node):
         self.get_logger().info(f"Capture mode: {self._capture_mode()}")
         self._setup_gpio_trigger()
         self.add_on_set_parameters_callback(self._on_set_parameters)
+        self._start_preview_watchdog()
 
         if bool(self.get_parameter("manage_previews").value) and bool(self.get_parameter("start_previews").value):
             auto_detect = bool(self.get_parameter("auto_detect_cameras").value)
@@ -642,6 +649,83 @@ class CaptureService(Node):
             return
         self._relay_last_warn_mono = now_m
         self.get_logger().warn(message)
+
+    def _start_preview_watchdog(self) -> None:
+        if self._preview_watchdog_timer is not None:
+            return
+        if not bool(self.get_parameter("preview_watchdog_enable").value):
+            return
+        period_s = max(0.2, float(self.get_parameter("preview_watchdog_period_s").value))
+        self._preview_watchdog_timer = self.create_timer(period_s, self._preview_watchdog_cb)
+        self.get_logger().info(f"Preview watchdog enabled: period={period_s:.2f}s")
+
+    def _stop_preview_watchdog(self) -> None:
+        if self._preview_watchdog_timer is None:
+            return
+        try:
+            self.destroy_timer(self._preview_watchdog_timer)
+        except Exception:
+            try:
+                self._preview_watchdog_timer.cancel()
+            except Exception:
+                pass
+        self._preview_watchdog_timer = None
+
+    def _preview_watchdog_cb(self) -> None:
+        # Runtime recovery: if one preview process dies after startup, restart it.
+        if not bool(self.get_parameter("preview_watchdog_enable").value):
+            return
+        if not bool(self.get_parameter("manage_previews").value):
+            return
+        if not bool(self.get_parameter("start_previews").value):
+            return
+        if self._fallback_timer is not None:
+            return
+        if self._capture_lock.locked():
+            return
+        with self._preview_reconfig_lock:
+            if self._preview_reconfig_pending:
+                return
+        if self._preview_reconfig_thread is not None and self._preview_reconfig_thread.is_alive():
+            return
+        if not self._preview_watchdog_lock.acquire(blocking=False):
+            return
+
+        try:
+            expected = self._expected_preview_cams
+            dead: List[str] = []
+            if expected is None:
+                # Unknown camera count: recover only if both previews are dead.
+                p0_dead = (self._p0 is None) or (self._p0.poll() is not None)
+                p1_dead = (self._p1 is None) or (self._p1.poll() is not None)
+                if p0_dead and p1_dead:
+                    dead = ["cam0", "cam1"]
+            else:
+                if expected >= 1 and ((self._p0 is None) or (self._p0.poll() is not None)):
+                    dead.append("cam0")
+                if expected >= 2 and ((self._p1 is None) or (self._p1.poll() is not None)):
+                    dead.append("cam1")
+
+            if not dead:
+                return
+
+            min_interval = max(
+                0.2,
+                float(self.get_parameter("preview_watchdog_min_restart_interval_s").value),
+            )
+            now_m = time.monotonic()
+            if (now_m - self._preview_watchdog_last_restart_mono) < min_interval:
+                return
+            self._preview_watchdog_last_restart_mono = now_m
+
+            self.get_logger().warn(
+                f"Preview watchdog: detected dead preview process ({', '.join(dead)}); restarting."
+            )
+            self._restart_failed_previews(dead)
+        except Exception as e:
+            self.get_logger().error(f"Preview watchdog restart failed: {e}")
+        finally:
+            self._preview_watchdog_lock.release()
 
     def _start_preview_relay(self) -> None:
         if self._relay_timer is not None:
@@ -2432,6 +2516,10 @@ def main():
         pass
     finally:
         # Ensure we don't leave camera processes behind if we own them.
+        try:
+            node._stop_preview_watchdog()
+        except Exception:
+            pass
         try:
             if bool(node.get_parameter("manage_previews").value):
                 node._stop_previews_managed()  # cleanup

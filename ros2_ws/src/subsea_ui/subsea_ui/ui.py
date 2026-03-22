@@ -604,9 +604,11 @@ class MainWindow(QWidget):
         self.ind_cam1 = QLabel("● Cam1")
         self.ind_srv = QLabel("● Capture service")
         self.ind_gnss_lock = QLabel("● GNSS Lock")
+        self.ind_corr_link = QLabel("● Corrections")
         for ind in (self.ind_cam0, self.ind_cam1, self.ind_srv):
             ind.setStyleSheet("font-weight:600;")
         self.ind_gnss_lock.setStyleSheet("color:#F3C969; font-weight:700;")
+        self.ind_corr_link.setStyleSheet("color:#F3C969; font-weight:700;")
 
         self.status = QLabel("Status: ready")
         self.status.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -677,6 +679,8 @@ class MainWindow(QWidget):
         self._session_bag_log_fp = None
         self._gnss_locked = False
         self._gnss_lock_reason = "waiting for NavSatFix"
+        self._corr_active = False
+        self._corr_reason = "waiting for NavSatFix"
         self._require_gnss_lock_for_session = bool(
             self.ros_node.get_parameter("require_gnss_lock_for_session").value
         )
@@ -713,6 +717,7 @@ class MainWindow(QWidget):
         top_row.addWidget(self.ind_cam1)
         top_row.addWidget(self.ind_srv)
         top_row.addWidget(self.ind_gnss_lock)
+        top_row.addWidget(self.ind_corr_link)
         top_row.addWidget(self.session_status)
         top_row.addStretch(1)
         top_row.addWidget(self.session_btn, 0, Qt.AlignRight)
@@ -765,6 +770,7 @@ class MainWindow(QWidget):
         self.gnss_alt = QLabel("Alt: —")
         self.gnss_cov = QLabel("Covariance: —")
         self.gnss_fix_meta = QLabel("Status: —")
+        self.gnss_corr = QLabel("Corrections: —")
 
         self.gnss_time_ref = QLabel("TimeRef stamp: —")
         self.gnss_time_ref_src = QLabel("TimeRef source: —")
@@ -781,6 +787,7 @@ class MainWindow(QWidget):
             self.gnss_alt,
             self.gnss_cov,
             self.gnss_fix_meta,
+            self.gnss_corr,
             self.gnss_time_ref,
             self.gnss_time_ref_src,
             self.gnss_time_ref_age,
@@ -1082,6 +1089,8 @@ class MainWindow(QWidget):
             "gnss_lock_required": bool(self._require_gnss_lock_for_session),
             "gnss_lock_at_start": bool(self._session_started_with_gnss_lock),
             "gnss_lock_reason_at_start": self._session_gnss_lock_reason,
+            "corrections_active_at_start": bool(self._corr_active),
+            "corrections_reason_at_start": self._corr_reason,
             "return_code": return_code,
         }
 
@@ -1373,6 +1382,8 @@ class MainWindow(QWidget):
         now_m = time.monotonic()
         lock_state = "waiting"
         lock_reason = "waiting for NavSatFix"
+        corr_state = "waiting"
+        corr_reason = "waiting for NavSatFix"
 
         if fix is None:
             self.gnss_status.setText("GNSS: waiting for NavSatFix...")
@@ -1382,6 +1393,7 @@ class MainWindow(QWidget):
             self.gnss_alt.setText("Alt: —")
             self.gnss_cov.setText("Covariance: —")
             self.gnss_fix_meta.setText("Status: —")
+            self.gnss_corr.setText("Corrections: —")
         else:
             age_ms = (now_m - fix_rx) * 1000.0 if fix_rx is not None else 1e9
             status_code = int(fix.status.status)
@@ -1406,6 +1418,22 @@ class MainWindow(QWidget):
                 lock_state = "locked"
                 lock_reason = f"status={status_code}"
 
+            if age_ms > float(self._max_fix_age_ms_for_lock):
+                corr_state = "off"
+                corr_reason = f"stale fix ({age_ms:.0f} ms)"
+            elif status_code == 2:
+                corr_state = "on"
+                corr_reason = "RTK/DGPS corrections used"
+            elif status_code in (0, 1):
+                corr_state = "off"
+                corr_reason = "no differential correction in solution"
+            elif status_code < 0:
+                corr_state = "off"
+                corr_reason = "no GNSS fix"
+            else:
+                corr_state = "off"
+                corr_reason = f"status={status_code}"
+
             if lock_state == "locked":
                 self.gnss_status.setText(f"GNSS: lock acquired ({lock_reason})")
             else:
@@ -1419,6 +1447,7 @@ class MainWindow(QWidget):
                 f"Covariance diag: [{cov[0]:.4f}, {cov[4]:.4f}, {cov[8]:.4f}] type={int(fix.position_covariance_type)}"
             )
             self.gnss_fix_meta.setText(f"Status: status={status_code} service={service_code}")
+            self.gnss_corr.setText(f"Corrections: {corr_reason}")
 
         if time_ref is None:
             self.gnss_time_ref.setText("TimeRef stamp: —")
@@ -1449,6 +1478,8 @@ class MainWindow(QWidget):
 
         self._gnss_locked = lock_state == "locked"
         self._gnss_lock_reason = lock_reason
+        self._corr_active = corr_state == "on"
+        self._corr_reason = corr_reason
         if lock_state == "locked":
             self.ind_gnss_lock.setText("● GNSS Lock: YES")
             self.ind_gnss_lock.setStyleSheet("color:#52D273; font-weight:700;")
@@ -1458,6 +1489,16 @@ class MainWindow(QWidget):
         else:
             self.ind_gnss_lock.setText("● GNSS Lock: waiting")
             self.ind_gnss_lock.setStyleSheet("color:#F3C969; font-weight:700;")
+
+        if corr_state == "on":
+            self.ind_corr_link.setText("● Corrections: ON")
+            self.ind_corr_link.setStyleSheet("color:#52D273; font-weight:700;")
+        elif corr_state == "off":
+            self.ind_corr_link.setText("● Corrections: OFF")
+            self.ind_corr_link.setStyleSheet("color:#FF6B6B; font-weight:700;")
+        else:
+            self.ind_corr_link.setText("● Corrections: waiting")
+            self.ind_corr_link.setStyleSheet("color:#F3C969; font-weight:700;")
 
     def _render_preview(self, label: QLabel, info: QLabel, sub: ImageSub, name: str):
         if not sub.got_first_frame():

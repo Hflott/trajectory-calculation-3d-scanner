@@ -123,6 +123,9 @@ The UI now has a `Start Session` / `Stop Session` button in the top bar.
 It also shows a live GNSS lock badge:
 - `GNSS Lock: YES` -> safe to start logging
 - `GNSS Lock: NO` / `waiting` -> session start is blocked by default
+It also shows a live corrections badge:
+- `Corrections: ON` -> rover solution is using differential/RTK corrections
+- `Corrections: OFF` / `waiting` -> no corrections in current solution yet
 
 When started, it runs continuous `ros2 bag record` logging to:
 - `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`

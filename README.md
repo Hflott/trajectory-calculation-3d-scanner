@@ -136,6 +136,11 @@ It also shows a live GNSS lock badge:
 It also shows a live corrections badge:
 - `Corrections: ON` -> rover solution is using differential/RTK corrections
 - `Corrections: OFF` / `waiting` -> no corrections in current solution yet
+The GNSS tab now includes:
+- `Ready to Log` summary
+- fix type (`NO_FIX/FIX/SBAS/GBAS-RTK`)
+- estimated horizontal/vertical accuracy from covariance
+- fix/time_ref/imu freshness summary
 The Diagnostics tab includes a live readiness summary with explicit `OK/NO` lines for:
 - capture service
 - GNSS lock

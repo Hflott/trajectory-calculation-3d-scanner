@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import math
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -777,6 +778,11 @@ class MainWindow(QWidget):
 
         self.gnss_status = QLabel("GNSS: waiting…")
         self.gnss_status.setStyleSheet("font-size:18px; font-weight:700;")
+        self.gnss_ready = QLabel("Ready to Log: waiting…")
+        self.gnss_ready.setStyleSheet("font-size:20px; font-weight:800; color:#F3C969;")
+        self.gnss_fix_type = QLabel("Fix type: —")
+        self.gnss_pos_acc = QLabel("Estimated accuracy: —")
+        self.gnss_freshness = QLabel("Data freshness: —")
         self.gnss_fix_age = QLabel("Fix age: —")
         self.gnss_fix_stamp = QLabel("Fix stamp: —")
         self.gnss_latlon = QLabel("Lat/Lon: —")
@@ -801,6 +807,9 @@ class MainWindow(QWidget):
             self.gnss_cov,
             self.gnss_fix_meta,
             self.gnss_corr,
+            self.gnss_fix_type,
+            self.gnss_pos_acc,
+            self.gnss_freshness,
             self.gnss_time_ref,
             self.gnss_time_ref_src,
             self.gnss_time_ref_age,
@@ -811,7 +820,12 @@ class MainWindow(QWidget):
             l.setStyleSheet("font-size:15px;")
             gnss_root.addWidget(l)
 
+        self.imu_vals.setWordWrap(True)
+        self.gnss_time_ref.setWordWrap(True)
+        self.gnss_freshness.setWordWrap(True)
+        self.gnss_pos_acc.setWordWrap(True)
         gnss_root.insertWidget(0, self.gnss_status)
+        gnss_root.insertWidget(0, self.gnss_ready)
         gnss_tab.setLayout(gnss_root)
         self._tab_idx_gnss = self.tabs.addTab(gnss_tab, "GNSS")
 
@@ -1552,6 +1566,11 @@ class MainWindow(QWidget):
         lock_reason = "waiting for NavSatFix"
         corr_state = "waiting"
         corr_reason = "waiting for NavSatFix"
+        fix_age_ms: Optional[float] = None
+        time_age_ms: Optional[float] = None
+        imu_age_ms: Optional[float] = None
+        status_code: Optional[int] = None
+        service_code: Optional[int] = None
 
         if fix is None:
             self.gnss_status.setText("GNSS: waiting for NavSatFix...")
@@ -1562,8 +1581,11 @@ class MainWindow(QWidget):
             self.gnss_cov.setText("Covariance: —")
             self.gnss_fix_meta.setText("Status: —")
             self.gnss_corr.setText("Corrections: —")
+            self.gnss_fix_type.setText("Fix type: —")
+            self.gnss_pos_acc.setText("Estimated accuracy: —")
         else:
             age_ms = (now_m - fix_rx) * 1000.0 if fix_rx is not None else 1e9
+            fix_age_ms = age_ms
             status_code = int(fix.status.status)
             service_code = int(fix.status.service)
 
@@ -1607,7 +1629,12 @@ class MainWindow(QWidget):
             else:
                 self.gnss_status.setText(f"GNSS: no lock ({lock_reason})")
             self.gnss_fix_age.setText(f"Fix age: {age_ms:.0f} ms")
-            self.gnss_fix_stamp.setText(f"Fix stamp: {_fmt_stamp(fix.header.stamp)}")
+            fix_stamp = _fmt_stamp(fix.header.stamp)
+            try:
+                fix_utc = datetime.utcfromtimestamp(int(fix.header.stamp.sec)).strftime("%H:%M:%S")
+                self.gnss_fix_stamp.setText(f"Fix stamp: {fix_stamp} (UTC {fix_utc})")
+            except Exception:
+                self.gnss_fix_stamp.setText(f"Fix stamp: {fix_stamp}")
             self.gnss_latlon.setText(f"Lat/Lon: {fix.latitude:.8f}, {fix.longitude:.8f}")
             self.gnss_alt.setText(f"Alt: {fix.altitude:.3f} m")
             cov = fix.position_covariance
@@ -1616,6 +1643,25 @@ class MainWindow(QWidget):
             )
             self.gnss_fix_meta.setText(f"Status: status={status_code} service={service_code}")
             self.gnss_corr.setText(f"Corrections: {corr_reason}")
+            fix_type_map = {
+                -1: "NO_FIX",
+                0: "FIX",
+                1: "SBAS_FIX",
+                2: "GBAS/RTK_FIX",
+            }
+            fix_type = fix_type_map.get(status_code, f"UNKNOWN({status_code})")
+            self.gnss_fix_type.setText(f"Fix type: {fix_type}")
+            try:
+                cov_x = max(0.0, float(cov[0]))
+                cov_y = max(0.0, float(cov[4]))
+                cov_z = max(0.0, float(cov[8]))
+                sigma_h = math.sqrt(cov_x + cov_y)
+                sigma_v = math.sqrt(cov_z)
+                self.gnss_pos_acc.setText(
+                    f"Estimated accuracy (1-sigma): horizontal≈{sigma_h:.3f} m, vertical≈{sigma_v:.3f} m"
+                )
+            except Exception:
+                self.gnss_pos_acc.setText("Estimated accuracy: unavailable")
 
         if time_ref is None:
             self.gnss_time_ref.setText("TimeRef stamp: —")
@@ -1623,6 +1669,7 @@ class MainWindow(QWidget):
             self.gnss_time_ref_age.setText("TimeRef age: —")
         else:
             age_ms = (now_m - time_rx) * 1000.0 if time_rx is not None else 1e9
+            time_age_ms = age_ms
             self.gnss_time_ref.setText(
                 f"TimeRef stamp: ros={_fmt_stamp(time_ref.header.stamp)} ref={_fmt_stamp(time_ref.time_ref)}"
             )
@@ -1635,6 +1682,7 @@ class MainWindow(QWidget):
             self.imu_age.setText("IMU age: —")
         else:
             age_ms = (now_m - imu_rx) * 1000.0 if imu_rx is not None else 1e9
+            imu_age_ms = age_ms
             self.imu_stamp.setText(f"IMU stamp: {_fmt_stamp(imu.header.stamp)}")
             self.imu_vals.setText(
                 "IMU ang vel [rad/s]: "
@@ -1643,6 +1691,34 @@ class MainWindow(QWidget):
                 f"{imu.linear_acceleration.x:.4f}, {imu.linear_acceleration.y:.4f}, {imu.linear_acceleration.z:.4f}"
             )
             self.imu_age.setText(f"IMU age: {age_ms:.0f} ms")
+
+        fresh_bits = []
+        if fix_age_ms is None:
+            fresh_bits.append("fix=missing")
+        else:
+            fresh_bits.append(f"fix={fix_age_ms:.0f} ms")
+        if time_age_ms is None:
+            fresh_bits.append("time_ref=missing")
+        else:
+            fresh_bits.append(f"time_ref={time_age_ms:.0f} ms")
+        if imu_age_ms is None:
+            fresh_bits.append("imu=missing")
+        else:
+            fresh_bits.append(f"imu={imu_age_ms:.0f} ms")
+        self.gnss_freshness.setText("Data freshness: " + " | ".join(fresh_bits))
+
+        if lock_state == "locked" and corr_state == "on":
+            self.gnss_ready.setText("Ready to Log: YES (RTK corrections)")
+            self.gnss_ready.setStyleSheet("font-size:20px; font-weight:800; color:#52D273;")
+        elif lock_state == "locked":
+            self.gnss_ready.setText("Ready to Log: YES (GNSS lock, no corrections)")
+            self.gnss_ready.setStyleSheet("font-size:20px; font-weight:800; color:#F3C969;")
+        elif lock_state == "unlocked":
+            self.gnss_ready.setText("Ready to Log: NO (no GNSS lock)")
+            self.gnss_ready.setStyleSheet("font-size:20px; font-weight:800; color:#FF6B6B;")
+        else:
+            self.gnss_ready.setText("Ready to Log: waiting for GNSS...")
+            self.gnss_ready.setStyleSheet("font-size:20px; font-weight:800; color:#F3C969;")
 
         self._gnss_locked = lock_state == "locked"
         self._gnss_lock_reason = lock_reason

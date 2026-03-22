@@ -10,6 +10,7 @@ LAUNCH_FILE="${WS_DIR}/src/subsea_bringup/launch/rover_app.launch.py"
 START_LOCALIZATION="true"
 CAPTURE_MODE="stream"
 RESTART_SERVICES="true"
+GNSS_PREFLIGHT="true"
 EXTRA_ARGS=()
 
 source_safe() {
@@ -40,6 +41,7 @@ Options:
   --stream                Use capture_mode:=stream (default)
   --no-localization       Set start_localization:=false
   --localization          Set start_localization:=true (default)
+  --skip-gnss-preflight   Skip GNSS UART/gpsd preflight checks
   --skip-service-restart  Do not restart gpsd/chrony before launch
   -h, --help              Show this help
 
@@ -70,6 +72,10 @@ while [[ $# -gt 0 ]]; do
       RESTART_SERVICES="false"
       shift
       ;;
+    --skip-gnss-preflight)
+      GNSS_PREFLIGHT="false"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -97,12 +103,54 @@ fi
 source_safe "${ROS_SETUP}"
 source_safe "${WS_SETUP}"
 
-if [[ "${RESTART_SERVICES}" == "true" ]] && command -v systemctl >/dev/null 2>&1; then
-  if sudo -n true >/dev/null 2>&1; then
-    sudo systemctl restart gpsd.socket chrony || true
-  else
-    echo "Requesting sudo to restart gpsd/chrony..."
-    sudo systemctl restart gpsd.socket chrony || true
+run_gnss_preflight_as_root() {
+  local tty_rule='KERNEL=="ttyAMA0", GROUP="dialout", MODE="0660"'
+  local tty_rule_file='/etc/udev/rules.d/99-ttyama0.rules'
+  local need_reload_rules="false"
+
+  # Free UART0 from login console if enabled.
+  systemctl disable --now serial-getty@ttyAMA0.service >/dev/null 2>&1 || true
+
+  # Ensure gpsd can open ttyAMA0.
+  if id gpsd >/dev/null 2>&1; then
+    usermod -aG tty,dialout gpsd || true
+  fi
+
+  if ! grep -qF "${tty_rule}" "${tty_rule_file}" 2>/dev/null; then
+    mkdir -p "$(dirname "${tty_rule_file}")"
+    {
+      [[ -f "${tty_rule_file}" ]] && cat "${tty_rule_file}"
+      echo "${tty_rule}"
+    } | awk '!seen[$0]++' >"${tty_rule_file}.tmp"
+    mv "${tty_rule_file}.tmp" "${tty_rule_file}"
+    chmod 0644 "${tty_rule_file}"
+    need_reload_rules="true"
+  fi
+
+  if [[ "${need_reload_rules}" == "true" ]]; then
+    udevadm control --reload-rules >/dev/null 2>&1 || true
+    udevadm trigger /dev/ttyAMA0 >/dev/null 2>&1 || true
+  fi
+
+  systemctl restart gpsd.socket gpsd.service chrony >/dev/null 2>&1 || true
+}
+
+if command -v systemctl >/dev/null 2>&1; then
+  if [[ "${GNSS_PREFLIGHT}" == "true" ]]; then
+    if sudo -n true >/dev/null 2>&1; then
+      echo "Applying GNSS UART preflight..."
+      sudo bash -lc "$(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+    else
+      echo "Requesting sudo for GNSS UART preflight + gpsd/chrony restart..."
+      sudo bash -lc "$(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+    fi
+  elif [[ "${RESTART_SERVICES}" == "true" ]]; then
+    if sudo -n true >/dev/null 2>&1; then
+      sudo systemctl restart gpsd.socket chrony || true
+    else
+      echo "Requesting sudo to restart gpsd/chrony..."
+      sudo systemctl restart gpsd.socket chrony || true
+    fi
   fi
 fi
 
@@ -110,6 +158,7 @@ echo
 echo "Starting rover app..."
 echo "  start_localization:=${START_LOCALIZATION}"
 echo "  capture_mode:=${CAPTURE_MODE}"
+echo "  gnss_preflight:=${GNSS_PREFLIGHT}"
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   echo "  extra args: ${EXTRA_ARGS[*]}"
 fi

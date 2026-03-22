@@ -126,6 +126,12 @@ It also shows a live GNSS lock badge:
 It also shows a live corrections badge:
 - `Corrections: ON` -> rover solution is using differential/RTK corrections
 - `Corrections: OFF` / `waiting` -> no corrections in current solution yet
+The Diagnostics tab includes a live readiness summary with explicit `OK/NO` lines for:
+- capture service
+- GNSS lock
+- corrections
+- cam0/cam1 stream health
+- session state
 
 When started, it runs continuous `ros2 bag record` logging to:
 - `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`

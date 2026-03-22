@@ -711,18 +711,27 @@ class MainWindow(QWidget):
         self.preview_relay_fps = max(1, int(self.ros_node.get_parameter("preview_relay_fps").value))
 
         # ---- Preview tab
-        top_row = QHBoxLayout()
-        top_row.setSpacing(10)
-        top_row.addWidget(self.ind_cam0)
-        top_row.addWidget(self.ind_cam1)
-        top_row.addWidget(self.ind_srv)
-        top_row.addWidget(self.ind_gnss_lock)
-        top_row.addWidget(self.ind_corr_link)
-        top_row.addWidget(self.session_status)
-        top_row.addStretch(1)
-        top_row.addWidget(self.session_btn, 0, Qt.AlignRight)
-        top_row.addWidget(self.full_btn, 0, Qt.AlignRight)
-        top_row.addWidget(self.quit_btn, 0, Qt.AlignRight)
+        indicator_row = QHBoxLayout()
+        indicator_row.setSpacing(10)
+        indicator_row.addWidget(self.ind_cam0)
+        indicator_row.addWidget(self.ind_cam1)
+        indicator_row.addWidget(self.ind_srv)
+        indicator_row.addWidget(self.ind_gnss_lock)
+        indicator_row.addWidget(self.ind_corr_link)
+        indicator_row.addStretch(1)
+
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(10)
+        controls_row.addWidget(self.session_status)
+        controls_row.addStretch(1)
+        controls_row.addWidget(self.session_btn, 0, Qt.AlignRight)
+        controls_row.addWidget(self.full_btn, 0, Qt.AlignRight)
+        controls_row.addWidget(self.quit_btn, 0, Qt.AlignRight)
+
+        top_block = QVBoxLayout()
+        top_block.setSpacing(6)
+        top_block.addLayout(indicator_row)
+        top_block.addLayout(controls_row)
 
         preview_row = QHBoxLayout()
         preview_row.setSpacing(10)
@@ -745,7 +754,7 @@ class MainWindow(QWidget):
         preview_root = QVBoxLayout()
         preview_root.setContentsMargins(10, 10, 10, 10)
         preview_root.setSpacing(10)
-        preview_root.addLayout(top_row, 0)
+        preview_root.addLayout(top_block, 0)
         preview_root.addLayout(preview_row, 1)
         preview_root.addWidget(self.status, 0)
 
@@ -966,11 +975,21 @@ class MainWindow(QWidget):
         droot = QVBoxLayout()
         droot.setContentsMargins(10, 10, 10, 10)
         droot.setSpacing(10)
+        self.diag_overall = QLabel("Field Ready: —")
+        self.diag_overall.setStyleSheet("font-size:16px; font-weight:700; color:#B0B0B0;")
+        self.diag_details = QPlainTextEdit()
+        self.diag_details.setReadOnly(True)
+        self.diag_details.setMaximumBlockCount(300)
+        self.diag_details.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.diag_details.setStyleSheet("font-family: monospace; font-size:13px;")
+        self.diag_details.setMaximumHeight(170)
         self.log_box = QPlainTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMaximumBlockCount(5000)
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(lambda: self.log_box.setPlainText(""))
+        droot.addWidget(self.diag_overall, 0)
+        droot.addWidget(self.diag_details, 0)
         droot.addWidget(self.log_box, 1)
         droot.addWidget(clear_btn, 0)
         diag.setLayout(droot)
@@ -1049,6 +1068,40 @@ class MainWindow(QWidget):
         self._consume_capture_debug_events()
         self._refresh_gnss()
         self._refresh_session_status()
+        self._refresh_diag_status()
+
+    def _refresh_diag_status(self) -> None:
+        cam0_age_s, cam0_fps = self.cam0.stream_stats()
+        cam1_age_s, cam1_fps = self.cam1.stream_stats()
+        cam0_ok = self.cam0.got_first_frame() and cam0_age_s < 0.7
+        cam1_ok = self.cam1.got_first_frame() and cam1_age_s < 0.7
+        srv_ok = self.ros_node.service_ready()
+        gnss_ok = bool(self._gnss_locked)
+        corr_ok = bool(self._corr_active)
+
+        if srv_ok and gnss_ok and corr_ok and cam0_ok and cam1_ok:
+            overall_text = "Field Ready: OK"
+            overall_style = "font-size:16px; font-weight:700; color:#52D273;"
+        elif srv_ok and gnss_ok and cam0_ok and cam1_ok:
+            overall_text = "Field Ready: WARN (no corrections)"
+            overall_style = "font-size:16px; font-weight:700; color:#F3C969;"
+        else:
+            overall_text = "Field Ready: NOT OK"
+            overall_style = "font-size:16px; font-weight:700; color:#FF6B6B;"
+
+        self.diag_overall.setText(overall_text)
+        self.diag_overall.setStyleSheet(overall_style)
+
+        session_state = "RUNNING" if self._session_active else "IDLE"
+        lines = [
+            f"Capture service : {'OK' if srv_ok else 'NO'}",
+            f"GNSS lock       : {'OK' if gnss_ok else 'NO'} ({self._gnss_lock_reason})",
+            f"Corrections     : {'ON' if corr_ok else 'OFF'} ({self._corr_reason})",
+            f"Cam0 stream     : {'OK' if cam0_ok else 'NO'} (age={cam0_age_s*1000.0:.0f} ms fps={cam0_fps:.1f})",
+            f"Cam1 stream     : {'OK' if cam1_ok else 'NO'} (age={cam1_age_s*1000.0:.0f} ms fps={cam1_fps:.1f})",
+            f"Session         : {session_state}",
+        ]
+        self.diag_details.setPlainText("\n".join(lines))
 
     def _session_duration_s(self) -> float:
         if (not self._session_active) or (self._session_start_mono is None):
@@ -1057,7 +1110,7 @@ class MainWindow(QWidget):
 
     def _refresh_session_status(self) -> None:
         if not self._session_active:
-            self.session_status.setText("Session: idle")
+            self.session_status.setText("Session: IDLE")
             self.session_status.setStyleSheet("font-size:14px; color:#B0B0B0;")
             return
         if self._session_bag_proc is not None:
@@ -1070,8 +1123,7 @@ class MainWindow(QWidget):
         hh = dur_s // 3600
         mm = (dur_s % 3600) // 60
         ss = dur_s % 60
-        sid = self._session_id or "running"
-        self.session_status.setText(f"Session: {sid} ({hh:02d}:{mm:02d}:{ss:02d})")
+        self.session_status.setText(f"Session: RUNNING {hh:02d}:{mm:02d}:{ss:02d}")
         self.session_status.setStyleSheet("font-size:14px; color:#52D273; font-weight:700;")
 
     def _session_manifest_data(self, state: str, reason: str = "", return_code: Optional[int] = None) -> Dict[str, Any]:

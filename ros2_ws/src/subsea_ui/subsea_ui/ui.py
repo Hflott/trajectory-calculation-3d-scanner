@@ -10,6 +10,8 @@ Robustness + UX goals:
 
 import json
 import os
+import signal
+import subprocess
 import sys
 import threading
 import time
@@ -102,6 +104,10 @@ def load_jpeg_as_pix(path: str) -> Optional[QPixmap]:
 
 def _ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
+
+
+def _utc_ts() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _fmt_stamp(stamp) -> str:
@@ -368,6 +374,16 @@ class AppNode(Node):
         self.declare_parameter("ui_fps", int(cfg.get("ui_fps", 15)))
         self.declare_parameter("preview_fps", int(cfg.get("preview_fps", 15)))
         self.declare_parameter("preview_relay_fps", int(cfg.get("preview_relay_fps", 10)))
+        self.declare_parameter(
+            "session_bag_topics",
+            cfg.get(
+                "session_bag_topics",
+                "/imu/data /fix /time_reference /odometry/local /odometry/global /capture/events /capture/debug",
+            ),
+        )
+        self.declare_parameter("session_record_images", bool(cfg.get("session_record_images", False)))
+        self.declare_parameter("session_cam0_topic", cfg.get("session_cam0_topic", "/cam0/camera/image_raw"))
+        self.declare_parameter("session_cam1_topic", cfg.get("session_cam1_topic", "/cam1/camera/image_raw"))
 
         self.cli = self.create_client(CapturePair, str(self.get_parameter("capture_service").value))
         self.action_cli = ActionClient(self, CapturePairAction, str(self.get_parameter("capture_action").value))
@@ -542,6 +558,26 @@ class AppNode(Node):
         params = [Parameter("preview_relay_fps", Parameter.Type.INTEGER, int(max(1, fps)))]
         return self._capture_params.set_parameters(params)
 
+    def session_topics(self) -> List[str]:
+        raw = str(self.get_parameter("session_bag_topics").value or "").strip()
+        topics = [t.strip() for t in raw.split() if t.strip()]
+        if bool(self.get_parameter("session_record_images").value):
+            cam0_topic = str(self.get_parameter("session_cam0_topic").value or "").strip()
+            cam1_topic = str(self.get_parameter("session_cam1_topic").value or "").strip()
+            if cam0_topic:
+                topics.append(cam0_topic)
+            if cam1_topic:
+                topics.append(cam1_topic)
+        out: List[str] = []
+        seen = set()
+        for t in topics:
+            topic = t if t.startswith("/") else f"/{t}"
+            if topic in seen:
+                continue
+            seen.add(topic)
+            out.append(topic)
+        return out
+
 
 class MainWindow(QWidget):
     def __init__(self, ros_node: AppNode, cam0: ImageSub, cam1: ImageSub, gnss: GnssSub):
@@ -607,10 +643,28 @@ class MainWindow(QWidget):
         self.full_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
         self.full_btn.clicked.connect(self.toggle_fullscreen)
 
+        self.session_btn = QPushButton("Start Session")
+        self.session_btn.setMinimumHeight(34)
+        self.session_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
+        self.session_btn.clicked.connect(self._on_session_toggle_clicked)
+
         self.quit_btn = QPushButton("Quit")
         self.quit_btn.setMinimumHeight(34)
         self.quit_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
         self.quit_btn.clicked.connect(self.close)
+
+        self.session_status = QLabel("Session: idle")
+        self.session_status.setStyleSheet("font-size:14px; color:#B0B0B0;")
+
+        self._session_active = False
+        self._session_id: Optional[str] = None
+        self._session_dir: Optional[str] = None
+        self._session_bag_dir: Optional[str] = None
+        self._session_manifest_path: Optional[str] = None
+        self._session_start_mono: Optional[float] = None
+        self._session_start_utc: Optional[str] = None
+        self._session_bag_proc: Optional[subprocess.Popen] = None
+        self._session_bag_log_fp = None
 
         # Store last pixmaps so we can rescale on resize
         self._cap0_pix: Optional[QPixmap] = None
@@ -640,7 +694,9 @@ class MainWindow(QWidget):
         top_row.addWidget(self.ind_cam0)
         top_row.addWidget(self.ind_cam1)
         top_row.addWidget(self.ind_srv)
+        top_row.addWidget(self.session_status)
         top_row.addStretch(1)
+        top_row.addWidget(self.session_btn, 0, Qt.AlignRight)
         top_row.addWidget(self.full_btn, 0, Qt.AlignRight)
         top_row.addWidget(self.quit_btn, 0, Qt.AlignRight)
 
@@ -927,6 +983,8 @@ class MainWindow(QWidget):
     def _apply_compact_mode_if_small(self, screen_w: int, screen_h: int):
         if screen_h > 650 and screen_w > 1100:
             return
+        self.session_btn.setMinimumHeight(30)
+        self.session_btn.setStyleSheet("font-size:13px; padding:2px 8px;")
         self.full_btn.setMinimumHeight(30)
         self.full_btn.setStyleSheet("font-size:13px; padding:2px 8px;")
         self.quit_btn.setMinimumHeight(30)
@@ -939,6 +997,11 @@ class MainWindow(QWidget):
             self.setWindowState(self.windowState() & ~Qt.WindowFullScreen)
         else:
             self.setWindowState(self.windowState() | Qt.WindowFullScreen)
+
+    def closeEvent(self, e):
+        if self._session_active:
+            self._stop_session(reason="ui_closed")
+        super().closeEvent(e)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
@@ -959,6 +1022,183 @@ class MainWindow(QWidget):
         self._consume_capture_events()
         self._consume_capture_debug_events()
         self._refresh_gnss()
+        self._refresh_session_status()
+
+    def _session_duration_s(self) -> float:
+        if (not self._session_active) or (self._session_start_mono is None):
+            return 0.0
+        return max(0.0, time.monotonic() - self._session_start_mono)
+
+    def _refresh_session_status(self) -> None:
+        if not self._session_active:
+            self.session_status.setText("Session: idle")
+            self.session_status.setStyleSheet("font-size:14px; color:#B0B0B0;")
+            return
+        if self._session_bag_proc is not None:
+            rc = self._session_bag_proc.poll()
+            if rc is not None:
+                self._log(f"Session recorder exited unexpectedly (code={rc})")
+                self._stop_session(reason=f"process_exit_{rc}")
+                return
+        dur_s = int(self._session_duration_s())
+        hh = dur_s // 3600
+        mm = (dur_s % 3600) // 60
+        ss = dur_s % 60
+        sid = self._session_id or "running"
+        self.session_status.setText(f"Session: {sid} ({hh:02d}:{mm:02d}:{ss:02d})")
+        self.session_status.setStyleSheet("font-size:14px; color:#52D273; font-weight:700;")
+
+    def _session_manifest_data(self, state: str, reason: str = "", return_code: Optional[int] = None) -> Dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "session_id": self._session_id,
+            "state": state,
+            "reason": reason,
+            "start_utc": self._session_start_utc,
+            "end_utc": _utc_ts() if state != "running" else None,
+            "duration_s": self._session_duration_s() if state != "running" else None,
+            "capture_output_dir": self.out_dir,
+            "bag_dir": self._session_bag_dir,
+            "topics": self.ros_node.session_topics(),
+            "return_code": return_code,
+        }
+
+    def _write_session_manifest(self, data: Dict[str, Any]) -> None:
+        if not self._session_manifest_path:
+            return
+        tmp = self._session_manifest_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+        os.replace(tmp, self._session_manifest_path)
+
+    def _session_root_dir(self) -> str:
+        return os.path.join(self.out_dir, "sessions")
+
+    def _start_session(self) -> None:
+        if self._session_active:
+            return
+        topics = self.ros_node.session_topics()
+        if not topics:
+            self.status.setText("Status: session start failed (no topics configured)")
+            self._log("Session start failed: no topics configured for bag recording")
+            return
+
+        os.makedirs(self._session_root_dir(), exist_ok=True)
+        session_id = datetime.now().strftime("sess_%Y%m%d_%H%M%S")
+        session_dir = os.path.join(self._session_root_dir(), session_id)
+        bag_dir = os.path.join(session_dir, "bag")
+        os.makedirs(session_dir, exist_ok=True)
+
+        bag_log_path = os.path.join(session_dir, "rosbag_record.log")
+        manifest_path = os.path.join(session_dir, "session_manifest.json")
+        cmd = ["ros2", "bag", "record", "-o", bag_dir] + topics
+
+        try:
+            log_fp = open(bag_log_path, "w", encoding="utf-8")
+        except Exception as e:
+            self.status.setText("Status: session start failed (log file)")
+            self._log(f"Session start failed: cannot open bag log file: {e}")
+            return
+
+        try:
+            proc = subprocess.Popen(cmd, stdout=log_fp, stderr=subprocess.STDOUT)
+        except Exception as e:
+            try:
+                log_fp.close()
+            except Exception:
+                pass
+            self.status.setText("Status: session start failed (ros2 bag)")
+            self._log(f"Session start failed: cannot launch ros2 bag record: {e}")
+            return
+
+        # Fast-fail check for obvious startup errors.
+        time.sleep(0.2)
+        rc = proc.poll()
+        if rc is not None:
+            try:
+                log_fp.close()
+            except Exception:
+                pass
+            self.status.setText("Status: session start failed (ros2 bag exited)")
+            self._log(f"Session start failed: ros2 bag exited immediately (code={rc})")
+            return
+
+        self._session_active = True
+        self._session_id = session_id
+        self._session_dir = session_dir
+        self._session_bag_dir = bag_dir
+        self._session_manifest_path = manifest_path
+        self._session_start_mono = time.monotonic()
+        self._session_start_utc = _utc_ts()
+        self._session_bag_proc = proc
+        self._session_bag_log_fp = log_fp
+        self.session_btn.setText("Stop Session")
+        self.session_btn.setStyleSheet("font-size:14px; padding:4px 10px; background:#3A1E1E;")
+        self.status.setText(f"Status: session recording ({session_id})")
+        self._log(f"Session started: id={session_id}")
+        self._log(f"Bag topics: {' '.join(topics)}")
+        self._log(f"Bag dir: {bag_dir}")
+        self._write_session_manifest(self._session_manifest_data(state="running"))
+
+    def _stop_session(self, reason: str = "user_stop") -> None:
+        if not self._session_active:
+            return
+        proc = self._session_bag_proc
+        rc: Optional[int] = None
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.send_signal(signal.SIGINT)
+                    try:
+                        proc.wait(timeout=12.0)
+                    except subprocess.TimeoutExpired:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=3.0)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                            proc.wait(timeout=2.0)
+                rc = proc.poll()
+            except Exception as e:
+                self._log(f"Session stop warning: {e}")
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                rc = proc.poll()
+
+        if self._session_bag_log_fp is not None:
+            try:
+                self._session_bag_log_fp.flush()
+                self._session_bag_log_fp.close()
+            except Exception:
+                pass
+
+        self._write_session_manifest(self._session_manifest_data(state="stopped", reason=reason, return_code=rc))
+
+        sid = self._session_id or "session"
+        self._log(f"Session stopped: id={sid} reason={reason} return_code={rc}")
+        if self._session_dir:
+            self._log(f"Session files: {self._session_dir}")
+        self.status.setText(f"Status: session stopped ({sid})")
+        self.session_btn.setText("Start Session")
+        self.session_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
+
+        self._session_active = False
+        self._session_id = None
+        self._session_dir = None
+        self._session_bag_dir = None
+        self._session_manifest_path = None
+        self._session_start_mono = None
+        self._session_start_utc = None
+        self._session_bag_proc = None
+        self._session_bag_log_fp = None
+
+    def _on_session_toggle_clicked(self) -> None:
+        if self._session_active:
+            self._stop_session(reason="user_stop")
+        else:
+            self._start_session()
 
     def _consume_capture_events(self) -> None:
         events = self.ros_node.pop_capture_events()
@@ -1239,6 +1479,10 @@ class MainWindow(QWidget):
             "gnss_fix_topic": self.gnss_fix_topic_edit.text().strip(),
             "gnss_time_ref_topic": self.gnss_time_ref_topic_edit.text().strip(),
             "gnss_imu_topic": self.gnss_imu_topic_edit.text().strip(),
+            "session_bag_topics": str(self.ros_node.get_parameter("session_bag_topics").value),
+            "session_record_images": bool(self.ros_node.get_parameter("session_record_images").value),
+            "session_cam0_topic": str(self.ros_node.get_parameter("session_cam0_topic").value),
+            "session_cam1_topic": str(self.ros_node.get_parameter("session_cam1_topic").value),
         }
         save_config(cfg)
         self.status.setText("Status: settings saved")

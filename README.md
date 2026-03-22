@@ -106,11 +106,43 @@ Quick field diagnostics (gpsd/PPS/chrony + ROS topic checks):
 ./scripts/check_rover_field.sh
 ```
 
+Create a shareable diagnostics bundle (single command, includes gpsd/PPS/chrony/ROS checks + recent capture metadata/session logs):
+```bash
+./scripts/collect_rover_diagnostics.sh
+```
+
 Useful options:
 ```bash
 ./scripts/run_rover_field.sh --still
 ./scripts/run_rover_field.sh --no-localization
 ./scripts/run_rover_field.sh --skip-service-restart
+```
+
+### Session Recording (UI)
+The UI now has a `Start Session` / `Stop Session` button in the top bar.
+
+When started, it runs continuous `ros2 bag record` logging to:
+- `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`
+- with session metadata in `session_manifest.json`
+- and recorder stdout/stderr in `rosbag_record.log`
+
+Default recorded topics:
+- `/imu/data`
+- `/fix`
+- `/time_reference`
+- `/odometry/local`
+- `/odometry/global`
+- `/capture/events`
+- `/capture/debug`
+
+Optional image-stream recording can be enabled via UI node parameters:
+Edit `~/.config/subsea_ui/config.json` and set:
+```json
+{
+  "session_record_images": true,
+  "session_cam0_topic": "/cam0/camera/image_raw",
+  "session_cam1_topic": "/cam1/camera/image_raw"
+}
 ```
 
 ## Capture mode for deblurring

@@ -19,4 +19,9 @@ setup(
     maintainer_email='',
     description='Bringup launch for rover app',
     license='MIT',
+    entry_points={
+        'console_scripts': [
+            'gpsd_json_fix_bridge = subsea_bringup.gpsd_json_fix_bridge:main',
+        ],
+    },
 )

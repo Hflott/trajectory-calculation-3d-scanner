@@ -197,6 +197,10 @@ if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('start_gpsd_clien
 else
   echo "  note: launch file has no start_gpsd_client arg; skipping explicit GNSS arg"
 fi
+if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('use_gpsd_json_bridge'" "${LAUNCH_FILE}"; then
+  echo "  use_gpsd_json_bridge:=true"
+  LAUNCH_ARGS+=("use_gpsd_json_bridge:=true")
+fi
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   LAUNCH_ARGS+=("${EXTRA_ARGS[@]}")
 fi

@@ -22,6 +22,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     # --- User-friendly knobs
     start_gpsd_client = LaunchConfiguration('start_gpsd_client')
+    use_gpsd_json_bridge = LaunchConfiguration('use_gpsd_json_bridge')
     gpsd_host = LaunchConfiguration('gpsd_host')
     gpsd_port = LaunchConfiguration('gpsd_port')
     start_cameras = LaunchConfiguration('start_cameras')
@@ -186,7 +187,27 @@ def generate_launch_description():
         executable='component_container_mt',
         composable_node_descriptions=[gpsd_client],
         output='screen',
-        condition=IfCondition(start_gpsd_client),
+        condition=IfCondition(
+            PythonExpression([
+                "'", start_gpsd_client, "' == 'true' and '",
+                use_gpsd_json_bridge, "' == 'false'"
+            ])
+        ),
+    )
+
+    gpsd_json_bridge = Node(
+        package='subsea_bringup',
+        executable='gpsd_json_fix_bridge',
+        name='gpsd_json_fix_bridge',
+        output='screen',
+        parameters=[{
+            'host': gpsd_host,
+            'port': gpsd_port_int,
+            'fix_topic': '/fix',
+            'frame_id': 'gps',
+            'publish_no_fix': False,
+        }],
+        condition=IfCondition(use_gpsd_json_bridge),
     )
 
     # --- Capture service (stream-synced by default; still mode optional)
@@ -304,6 +325,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('start_gpsd_client', default_value='true'),
+        DeclareLaunchArgument('use_gpsd_json_bridge', default_value='true'),
         DeclareLaunchArgument('gpsd_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('gpsd_port', default_value='2947'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
@@ -329,6 +351,7 @@ def generate_launch_description():
         *env_actions,
 
         gpsd_container,
+        gpsd_json_bridge,
         cam0, cam1, cam0_r, cam1_r,
         capture,
         ui,

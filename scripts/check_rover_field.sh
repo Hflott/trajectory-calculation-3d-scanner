@@ -6,6 +6,20 @@ WS_DIR="${ROOT_DIR}/ros2_ws"
 ROS_SETUP="/opt/ros/jazzy/setup.bash"
 WS_SETUP="${WS_DIR}/install/setup.bash"
 
+source_safe() {
+  local path="$1"
+  local had_u=0
+  case $- in
+    *u*) had_u=1 ;;
+  esac
+  set +u
+  # shellcheck disable=SC1090
+  source "${path}"
+  if [[ ${had_u} -eq 1 ]]; then
+    set -u
+  fi
+}
+
 if [[ ! -f "${ROS_SETUP}" ]]; then
   echo "ERROR: ROS setup not found at ${ROS_SETUP}" >&2
   exit 1
@@ -15,8 +29,8 @@ if [[ ! -f "${WS_SETUP}" ]]; then
   exit 1
 fi
 
-source "${ROS_SETUP}"
-source "${WS_SETUP}"
+source_safe "${ROS_SETUP}"
+source_safe "${WS_SETUP}"
 
 echo "== gpsd stream (6s) =="
 if command -v gpspipe >/dev/null 2>&1; then

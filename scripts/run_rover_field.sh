@@ -12,6 +12,20 @@ CAPTURE_MODE="stream"
 RESTART_SERVICES="true"
 EXTRA_ARGS=()
 
+source_safe() {
+  local path="$1"
+  local had_u=0
+  case $- in
+    *u*) had_u=1 ;;
+  esac
+  set +u
+  # shellcheck disable=SC1090
+  source "${path}"
+  if [[ ${had_u} -eq 1 ]]; then
+    set -u
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/run_rover_field.sh [options] [launch-arg:=value ...]
@@ -80,8 +94,8 @@ if [[ ! -f "${WS_SETUP}" ]]; then
   exit 1
 fi
 
-source "${ROS_SETUP}"
-source "${WS_SETUP}"
+source_safe "${ROS_SETUP}"
+source_safe "${WS_SETUP}"
 
 if [[ "${RESTART_SERVICES}" == "true" ]] && command -v systemctl >/dev/null 2>&1; then
   if sudo -n true >/dev/null 2>&1; then

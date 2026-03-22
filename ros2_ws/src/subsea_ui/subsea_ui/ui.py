@@ -596,7 +596,7 @@ class MainWindow(QWidget):
         self.cam1 = cam1
         self.gnss = gnss
 
-        self.setWindowTitle("Trajectory Capture UI")
+        self.setWindowTitle("Rover App")
 
         self.tabs = QTabWidget()
 

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="Subsea Rover Field"
+APP_NAME="Rover App"
 APP_ID="subsea-rover-field"
 
 RUN_SCRIPT="${ROOT_DIR}/scripts/run_rover_field.sh"
@@ -30,6 +30,7 @@ APP_DIR="${HOME}/.local/share/applications"
 BIN_DIR="${HOME}/.local/bin"
 LAUNCHER_FILE="${BIN_DIR}/${APP_ID}-launcher.sh"
 DESKTOP_FILE="${DESKTOP_DIR}/${APP_NAME}.desktop"
+LEGACY_DESKTOP_FILE="${DESKTOP_DIR}/Subsea Rover Field.desktop"
 APP_FILE="${APP_DIR}/${APP_ID}.desktop"
 ICON_FILE="${ICON_DIR}/${APP_ID}.svg"
 
@@ -63,6 +64,11 @@ EOF
 chmod +x "${DESKTOP_FILE}"
 cp -f "${DESKTOP_FILE}" "${APP_FILE}"
 chmod 0644 "${APP_FILE}"
+
+# Remove legacy desktop shortcut name if present.
+if [[ -f "${LEGACY_DESKTOP_FILE}" ]]; then
+  rm -f "${LEGACY_DESKTOP_FILE}" || true
+fi
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "${APP_FILE}" >/dev/null 2>&1 || true

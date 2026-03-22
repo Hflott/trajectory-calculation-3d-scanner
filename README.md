@@ -122,6 +122,11 @@ Create Raspberry Pi desktop shortcut + icon:
 ```bash
 ./scripts/install_desktop_shortcut.sh
 ```
+The installed shortcut starts with `--skip-service-restart` to avoid sudo/password prompts.
+Recommended one-time setup so services start at boot:
+```bash
+sudo systemctl enable --now gpsd.socket chrony
+```
 
 ### Session Recording (UI)
 The UI now has a `Start Session` / `Stop Session` button in the top bar.

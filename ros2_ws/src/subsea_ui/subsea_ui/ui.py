@@ -29,10 +29,13 @@ from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QImage, QPixmap
 from qtpy.QtWidgets import (
     QApplication,
+    QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -774,7 +777,7 @@ class MainWindow(QWidget):
         gnss_tab = QWidget()
         gnss_root = QVBoxLayout()
         gnss_root.setContentsMargins(10, 10, 10, 10)
-        gnss_root.setSpacing(8)
+        gnss_root.setSpacing(10)
 
         self.gnss_status = QLabel("GNSS: waiting…")
         self.gnss_status.setStyleSheet("font-size:18px; font-weight:700;")
@@ -799,6 +802,17 @@ class MainWindow(QWidget):
         self.imu_vals = QLabel("IMU ang vel / lin acc: —")
         self.imu_age = QLabel("IMU age: —")
 
+        self.gnss_quality = QProgressBar()
+        self.gnss_quality.setRange(0, 100)
+        self.gnss_quality.setValue(0)
+        self.gnss_quality.setFormat("GNSS quality: %p%")
+        self.gnss_quality.setTextVisible(True)
+        self.gnss_quality.setMinimumHeight(22)
+        self.gnss_quality.setStyleSheet(
+            "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
+            "QProgressBar::chunk { border-radius:8px; background:#6B6B6B; }"
+        )
+
         for l in (
             self.gnss_fix_age,
             self.gnss_fix_stamp,
@@ -818,14 +832,58 @@ class MainWindow(QWidget):
             self.imu_age,
         ):
             l.setStyleSheet("font-size:15px;")
-            gnss_root.addWidget(l)
+        self.imu_vals.setStyleSheet("font-size:14px;")
 
         self.imu_vals.setWordWrap(True)
         self.gnss_time_ref.setWordWrap(True)
         self.gnss_freshness.setWordWrap(True)
         self.gnss_pos_acc.setWordWrap(True)
-        gnss_root.insertWidget(0, self.gnss_status)
-        gnss_root.insertWidget(0, self.gnss_ready)
+
+        def _card(title: str, *widgets: QWidget) -> QFrame:
+            box = QFrame()
+            box.setFrameShape(QFrame.StyledPanel)
+            box.setStyleSheet(
+                "QFrame { background:#141a22; border:1px solid #25313f; border-radius:10px; }"
+            )
+            lay = QVBoxLayout()
+            lay.setContentsMargins(10, 10, 10, 10)
+            lay.setSpacing(6)
+            ttl = QLabel(title)
+            ttl.setStyleSheet("font-size:14px; font-weight:700; color:#9ec7de;")
+            lay.addWidget(ttl)
+            for w in widgets:
+                lay.addWidget(w)
+            box.setLayout(lay)
+            return box
+
+        gnss_grid = QGridLayout()
+        gnss_grid.setSpacing(10)
+        gnss_grid.addWidget(
+            _card("Solution", self.gnss_status, self.gnss_fix_type, self.gnss_fix_meta, self.gnss_corr),
+            0, 0
+        )
+        gnss_grid.addWidget(
+            _card("Accuracy", self.gnss_pos_acc, self.gnss_cov),
+            0, 1
+        )
+        gnss_grid.addWidget(
+            _card("Position", self.gnss_latlon, self.gnss_alt, self.gnss_fix_stamp),
+            1, 0
+        )
+        gnss_grid.addWidget(
+            _card("Timing", self.gnss_freshness, self.gnss_fix_age, self.gnss_time_ref_age, self.gnss_time_ref_src),
+            1, 1
+        )
+        gnss_grid.addWidget(
+            _card("IMU", self.imu_stamp, self.imu_age, self.imu_vals),
+            2, 0, 1, 2
+        )
+
+        gnss_root.addWidget(self.gnss_ready)
+        gnss_root.addWidget(self.gnss_quality)
+        gnss_root.addLayout(gnss_grid)
+        gnss_root.addWidget(self.gnss_time_ref)
+        gnss_root.addStretch(1)
         gnss_tab.setLayout(gnss_root)
         self._tab_idx_gnss = self.tabs.addTab(gnss_tab, "GNSS")
 
@@ -1706,6 +1764,50 @@ class MainWindow(QWidget):
         else:
             fresh_bits.append(f"imu={imu_age_ms:.0f} ms")
         self.gnss_freshness.setText("Data freshness: " + " | ".join(fresh_bits))
+
+        # Quick visual health score for field usage.
+        score = 0
+        if lock_state == "locked":
+            score += 40
+        if corr_state == "on":
+            score += 25
+        if fix_age_ms is not None:
+            if fix_age_ms <= 500.0:
+                score += 15
+            elif fix_age_ms <= float(self._max_fix_age_ms_for_lock):
+                score += 8
+        if imu_age_ms is not None:
+            if imu_age_ms <= 200.0:
+                score += 10
+            elif imu_age_ms <= 1000.0:
+                score += 5
+        try:
+            if fix is not None:
+                cov = fix.position_covariance
+                cov_x = max(0.0, float(cov[0]))
+                cov_y = max(0.0, float(cov[4]))
+                sigma_h = math.sqrt(cov_x + cov_y)
+                if sigma_h <= 0.03:
+                    score += 10
+                elif sigma_h <= 0.10:
+                    score += 7
+                elif sigma_h <= 0.50:
+                    score += 3
+        except Exception:
+            pass
+
+        score = max(0, min(100, int(score)))
+        self.gnss_quality.setValue(score)
+        if score >= 80:
+            chunk = "#52D273"
+        elif score >= 50:
+            chunk = "#F3C969"
+        else:
+            chunk = "#FF6B6B"
+        self.gnss_quality.setStyleSheet(
+            "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
+            f"QProgressBar::chunk {{ border-radius:8px; background:{chunk}; }}"
+        )
 
         if lock_state == "locked" and corr_state == "on":
             self.gnss_ready.setText("Ready to Log: YES (RTK corrections)")

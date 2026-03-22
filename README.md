@@ -141,6 +141,7 @@ The GNSS tab now includes:
 - fix type (`NO_FIX/FIX/SBAS/GBAS-RTK`)
 - estimated horizontal/vertical accuracy from covariance
 - fix/time_ref/imu freshness summary
+- card-based layout and a GNSS quality bar (0-100, red/yellow/green)
 The Diagnostics tab includes a live readiness summary with explicit `OK/NO` lines for:
 - capture service
 - GNSS lock

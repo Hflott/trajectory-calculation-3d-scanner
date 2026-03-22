@@ -120,6 +120,9 @@ Useful options:
 
 ### Session Recording (UI)
 The UI now has a `Start Session` / `Stop Session` button in the top bar.
+It also shows a live GNSS lock badge:
+- `GNSS Lock: YES` -> safe to start logging
+- `GNSS Lock: NO` / `waiting` -> session start is blocked by default
 
 When started, it runs continuous `ros2 bag record` logging to:
 - `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`
@@ -139,6 +142,8 @@ Optional image-stream recording can be enabled via UI node parameters:
 Edit `~/.config/subsea_ui/config.json` and set:
 ```json
 {
+  "require_gnss_lock_for_session": true,
+  "max_fix_age_ms_for_lock": 2000,
   "session_record_images": true,
   "session_cam0_topic": "/cam0/camera/image_raw",
   "session_cam1_topic": "/cam1/camera/image_raw"

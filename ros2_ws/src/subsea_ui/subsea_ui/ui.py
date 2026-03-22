@@ -375,6 +375,14 @@ class AppNode(Node):
         self.declare_parameter("preview_fps", int(cfg.get("preview_fps", 15)))
         self.declare_parameter("preview_relay_fps", int(cfg.get("preview_relay_fps", 10)))
         self.declare_parameter(
+            "require_gnss_lock_for_session",
+            bool(cfg.get("require_gnss_lock_for_session", True)),
+        )
+        self.declare_parameter(
+            "max_fix_age_ms_for_lock",
+            int(cfg.get("max_fix_age_ms_for_lock", 2000)),
+        )
+        self.declare_parameter(
             "session_bag_topics",
             cfg.get(
                 "session_bag_topics",
@@ -595,8 +603,10 @@ class MainWindow(QWidget):
         self.ind_cam0 = QLabel("● Cam0")
         self.ind_cam1 = QLabel("● Cam1")
         self.ind_srv = QLabel("● Capture service")
+        self.ind_gnss_lock = QLabel("● GNSS Lock")
         for ind in (self.ind_cam0, self.ind_cam1, self.ind_srv):
             ind.setStyleSheet("font-weight:600;")
+        self.ind_gnss_lock.setStyleSheet("color:#F3C969; font-weight:700;")
 
         self.status = QLabel("Status: ready")
         self.status.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -665,6 +675,14 @@ class MainWindow(QWidget):
         self._session_start_utc: Optional[str] = None
         self._session_bag_proc: Optional[subprocess.Popen] = None
         self._session_bag_log_fp = None
+        self._gnss_locked = False
+        self._gnss_lock_reason = "waiting for NavSatFix"
+        self._require_gnss_lock_for_session = bool(
+            self.ros_node.get_parameter("require_gnss_lock_for_session").value
+        )
+        self._max_fix_age_ms_for_lock = int(self.ros_node.get_parameter("max_fix_age_ms_for_lock").value)
+        self._session_started_with_gnss_lock = False
+        self._session_gnss_lock_reason = ""
 
         # Store last pixmaps so we can rescale on resize
         self._cap0_pix: Optional[QPixmap] = None
@@ -694,6 +712,7 @@ class MainWindow(QWidget):
         top_row.addWidget(self.ind_cam0)
         top_row.addWidget(self.ind_cam1)
         top_row.addWidget(self.ind_srv)
+        top_row.addWidget(self.ind_gnss_lock)
         top_row.addWidget(self.session_status)
         top_row.addStretch(1)
         top_row.addWidget(self.session_btn, 0, Qt.AlignRight)
@@ -1060,6 +1079,9 @@ class MainWindow(QWidget):
             "capture_output_dir": self.out_dir,
             "bag_dir": self._session_bag_dir,
             "topics": self.ros_node.session_topics(),
+            "gnss_lock_required": bool(self._require_gnss_lock_for_session),
+            "gnss_lock_at_start": bool(self._session_started_with_gnss_lock),
+            "gnss_lock_reason_at_start": self._session_gnss_lock_reason,
             "return_code": return_code,
         }
 
@@ -1076,6 +1098,10 @@ class MainWindow(QWidget):
 
     def _start_session(self) -> None:
         if self._session_active:
+            return
+        if self._require_gnss_lock_for_session and (not self._gnss_locked):
+            self.status.setText("Status: session blocked (no GNSS lock)")
+            self._log(f"Session start blocked: GNSS lock required ({self._gnss_lock_reason})")
             return
         topics = self.ros_node.session_topics()
         if not topics:
@@ -1132,6 +1158,8 @@ class MainWindow(QWidget):
         self._session_start_utc = _utc_ts()
         self._session_bag_proc = proc
         self._session_bag_log_fp = log_fp
+        self._session_started_with_gnss_lock = bool(self._gnss_locked)
+        self._session_gnss_lock_reason = str(self._gnss_lock_reason)
         self.session_btn.setText("Stop Session")
         self.session_btn.setStyleSheet("font-size:14px; padding:4px 10px; background:#3A1E1E;")
         self.status.setText(f"Status: session recording ({session_id})")
@@ -1193,6 +1221,8 @@ class MainWindow(QWidget):
         self._session_start_utc = None
         self._session_bag_proc = None
         self._session_bag_log_fp = None
+        self._session_started_with_gnss_lock = False
+        self._session_gnss_lock_reason = ""
 
     def _on_session_toggle_clicked(self) -> None:
         if self._session_active:
@@ -1341,6 +1371,8 @@ class MainWindow(QWidget):
     def _refresh_gnss(self) -> None:
         fix, time_ref, imu, fix_rx, time_rx, imu_rx = self.gnss.snapshot()
         now_m = time.monotonic()
+        lock_state = "waiting"
+        lock_reason = "waiting for NavSatFix"
 
         if fix is None:
             self.gnss_status.setText("GNSS: waiting for NavSatFix...")
@@ -1352,7 +1384,32 @@ class MainWindow(QWidget):
             self.gnss_fix_meta.setText("Status: —")
         else:
             age_ms = (now_m - fix_rx) * 1000.0 if fix_rx is not None else 1e9
-            self.gnss_status.setText("GNSS: receiving")
+            status_code = int(fix.status.status)
+            service_code = int(fix.status.service)
+
+            if age_ms > float(self._max_fix_age_ms_for_lock):
+                lock_state = "unlocked"
+                lock_reason = f"stale fix ({age_ms:.0f} ms)"
+            elif status_code < 0:
+                lock_state = "unlocked"
+                lock_reason = "receiver reports NO_FIX"
+            elif status_code == 0:
+                lock_state = "locked"
+                lock_reason = "FIX"
+            elif status_code == 1:
+                lock_state = "locked"
+                lock_reason = "SBAS_FIX"
+            elif status_code == 2:
+                lock_state = "locked"
+                lock_reason = "GBAS/RTK_FIX"
+            else:
+                lock_state = "locked"
+                lock_reason = f"status={status_code}"
+
+            if lock_state == "locked":
+                self.gnss_status.setText(f"GNSS: lock acquired ({lock_reason})")
+            else:
+                self.gnss_status.setText(f"GNSS: no lock ({lock_reason})")
             self.gnss_fix_age.setText(f"Fix age: {age_ms:.0f} ms")
             self.gnss_fix_stamp.setText(f"Fix stamp: {_fmt_stamp(fix.header.stamp)}")
             self.gnss_latlon.setText(f"Lat/Lon: {fix.latitude:.8f}, {fix.longitude:.8f}")
@@ -1361,7 +1418,7 @@ class MainWindow(QWidget):
             self.gnss_cov.setText(
                 f"Covariance diag: [{cov[0]:.4f}, {cov[4]:.4f}, {cov[8]:.4f}] type={int(fix.position_covariance_type)}"
             )
-            self.gnss_fix_meta.setText(f"Status: status={int(fix.status.status)} service={int(fix.status.service)}")
+            self.gnss_fix_meta.setText(f"Status: status={status_code} service={service_code}")
 
         if time_ref is None:
             self.gnss_time_ref.setText("TimeRef stamp: —")
@@ -1389,6 +1446,18 @@ class MainWindow(QWidget):
                 f"{imu.linear_acceleration.x:.4f}, {imu.linear_acceleration.y:.4f}, {imu.linear_acceleration.z:.4f}"
             )
             self.imu_age.setText(f"IMU age: {age_ms:.0f} ms")
+
+        self._gnss_locked = lock_state == "locked"
+        self._gnss_lock_reason = lock_reason
+        if lock_state == "locked":
+            self.ind_gnss_lock.setText("● GNSS Lock: YES")
+            self.ind_gnss_lock.setStyleSheet("color:#52D273; font-weight:700;")
+        elif lock_state == "unlocked":
+            self.ind_gnss_lock.setText("● GNSS Lock: NO")
+            self.ind_gnss_lock.setStyleSheet("color:#FF6B6B; font-weight:700;")
+        else:
+            self.ind_gnss_lock.setText("● GNSS Lock: waiting")
+            self.ind_gnss_lock.setStyleSheet("color:#F3C969; font-weight:700;")
 
     def _render_preview(self, label: QLabel, info: QLabel, sub: ImageSub, name: str):
         if not sub.got_first_frame():
@@ -1479,6 +1548,8 @@ class MainWindow(QWidget):
             "gnss_fix_topic": self.gnss_fix_topic_edit.text().strip(),
             "gnss_time_ref_topic": self.gnss_time_ref_topic_edit.text().strip(),
             "gnss_imu_topic": self.gnss_imu_topic_edit.text().strip(),
+            "require_gnss_lock_for_session": bool(self.ros_node.get_parameter("require_gnss_lock_for_session").value),
+            "max_fix_age_ms_for_lock": int(self.ros_node.get_parameter("max_fix_age_ms_for_lock").value),
             "session_bag_topics": str(self.ros_node.get_parameter("session_bag_topics").value),
             "session_record_images": bool(self.ros_node.get_parameter("session_record_images").value),
             "session_cam0_topic": str(self.ros_node.get_parameter("session_cam0_topic").value),

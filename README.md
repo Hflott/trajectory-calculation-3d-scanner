@@ -118,6 +118,11 @@ Useful options:
 ./scripts/run_rover_field.sh --skip-service-restart
 ```
 
+Create Raspberry Pi desktop shortcut + icon:
+```bash
+./scripts/install_desktop_shortcut.sh
+```
+
 ### Session Recording (UI)
 The UI now has a `Start Session` / `Stop Session` button in the top bar.
 It also shows a live GNSS lock badge:

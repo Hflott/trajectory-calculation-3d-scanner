@@ -207,7 +207,10 @@ def generate_launch_description():
             'manage_previews': manage_previews_bool,
             'start_previews': start_cameras_bool,
             'pause_previews': True,
-            'fallback_black_previews': False,
+            # Keep UI alive even if one preview node fails to start.
+            'fallback_black_previews': True,
+            # Dual-camera rig is expected in field use; avoid transient auto-detect misses.
+            'auto_detect_cameras': False,
 
             # Timestamp-accurate capture from live image stream (recommended for
             # GNSS/IMU motion compensation workflows).
@@ -236,11 +239,12 @@ def generate_launch_description():
             'preview_relay_fps': preview_ui_fps_int,
             'preview_format': preview_format,
             'preview_role': 'viewfinder',
-            'preview_start_stagger_s': 0.2,
-            'preview_restart_attempts': 3,
-            'preview_restart_delay_s': 0.2,
-            'preview_shutdown_timeout_s': 1.0,
-            'device_release_timeout_s': 1.0,
+            # Conservative timing reduces "device busy"/broken-pipe startup races.
+            'preview_start_stagger_s': 0.7,
+            'preview_restart_attempts': 4,
+            'preview_restart_delay_s': 0.6,
+            'preview_shutdown_timeout_s': 2.5,
+            'device_release_timeout_s': 2.5,
             'capture_parallel': True,
 
             # Capture-stream topics from camera_ros:
@@ -315,9 +319,9 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_fps', default_value='15'),
         DeclareLaunchArgument('preview_ui_width', default_value='640'),
         DeclareLaunchArgument('preview_ui_height', default_value='360'),
-        DeclareLaunchArgument('preview_ui_fps', default_value='10'),
-        DeclareLaunchArgument('preview_format', default_value='RGB888'),
-        DeclareLaunchArgument('ui_fps', default_value='12'),
+        DeclareLaunchArgument('preview_ui_fps', default_value='15'),
+        DeclareLaunchArgument('preview_format', default_value='BGR888'),
+        DeclareLaunchArgument('ui_fps', default_value='15'),
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
         DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),
         DeclareLaunchArgument('capture_debug_topic', default_value='/capture/debug'),

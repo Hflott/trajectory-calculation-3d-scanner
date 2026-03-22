@@ -254,6 +254,7 @@ class CaptureService(Node):
         self.declare_parameter("preview_watchdog_enable", True)
         self.declare_parameter("preview_watchdog_period_s", 1.0)
         self.declare_parameter("preview_watchdog_min_restart_interval_s", 2.0)
+        self.declare_parameter("preview_watchdog_stale_s", 3.0)
 
         self.declare_parameter("cam0_namespace", "/cam0")
         self.declare_parameter("cam1_namespace", "/cam1")
@@ -318,6 +319,7 @@ class CaptureService(Node):
         self._preview_watchdog_timer = None
         self._preview_watchdog_lock = threading.Lock()
         self._preview_watchdog_last_restart_mono = 0.0
+        self._preview_watchdog_epoch_mono = time.monotonic()
         self._relay_width = max(64, int(self.get_parameter("preview_relay_width").value))
         self._relay_height = max(64, int(self.get_parameter("preview_relay_height").value))
         self._relay_last_cam0_msg_id: Optional[int] = None
@@ -694,17 +696,47 @@ class CaptureService(Node):
         try:
             expected = self._expected_preview_cams
             dead: List[str] = []
+            reasons: List[str] = []
+            now_m = time.monotonic()
+            stale_s = max(0.5, float(self.get_parameter("preview_watchdog_stale_s").value))
+            with self._stream_lock:
+                rx0 = self._latest_cam0_rx_mono
+                rx1 = self._latest_cam1_rx_mono
+
+            def _stale(rx_mono: Optional[float]) -> bool:
+                if rx_mono is None:
+                    return (now_m - self._preview_watchdog_epoch_mono) > stale_s
+                return (now_m - rx_mono) > stale_s
+
             if expected is None:
                 # Unknown camera count: recover only if both previews are dead.
                 p0_dead = (self._p0 is None) or (self._p0.poll() is not None)
                 p1_dead = (self._p1 is None) or (self._p1.poll() is not None)
-                if p0_dead and p1_dead:
+                p0_stale = _stale(rx0)
+                p1_stale = _stale(rx1)
+                if (p0_dead and p1_dead) or (p0_stale and p1_stale):
                     dead = ["cam0", "cam1"]
+                    if p0_dead and p1_dead:
+                        reasons.append("both processes exited")
+                    else:
+                        reasons.append(f"both streams stale > {stale_s:.1f}s")
             else:
-                if expected >= 1 and ((self._p0 is None) or (self._p0.poll() is not None)):
-                    dead.append("cam0")
-                if expected >= 2 and ((self._p1 is None) or (self._p1.poll() is not None)):
-                    dead.append("cam1")
+                if expected >= 1:
+                    p0_dead = (self._p0 is None) or (self._p0.poll() is not None)
+                    if p0_dead:
+                        dead.append("cam0")
+                        reasons.append("cam0 process exited")
+                    elif _stale(rx0):
+                        dead.append("cam0")
+                        reasons.append(f"cam0 stream stale > {stale_s:.1f}s")
+                if expected >= 2:
+                    p1_dead = (self._p1 is None) or (self._p1.poll() is not None)
+                    if p1_dead:
+                        dead.append("cam1")
+                        reasons.append("cam1 process exited")
+                    elif _stale(rx1):
+                        dead.append("cam1")
+                        reasons.append(f"cam1 stream stale > {stale_s:.1f}s")
 
             if not dead:
                 return
@@ -713,13 +745,13 @@ class CaptureService(Node):
                 0.2,
                 float(self.get_parameter("preview_watchdog_min_restart_interval_s").value),
             )
-            now_m = time.monotonic()
             if (now_m - self._preview_watchdog_last_restart_mono) < min_interval:
                 return
             self._preview_watchdog_last_restart_mono = now_m
 
             self.get_logger().warn(
-                f"Preview watchdog: detected dead preview process ({', '.join(dead)}); restarting."
+                "Preview watchdog: restarting "
+                f"({', '.join(dead)}); reason: {'; '.join(reasons) if reasons else 'unknown'}."
             )
             self._restart_failed_previews(dead)
         except Exception as e:
@@ -1820,6 +1852,7 @@ class CaptureService(Node):
         return _popen_group(cmd, env=env)
 
     def _start_previews(self, camera_count: Optional[int] = None) -> None:
+        self._preview_watchdog_epoch_mono = time.monotonic()
         if self._fallback_timer is not None:
             self.get_logger().info("Stopping black preview fallback (camera previews starting)")
             self._stop_black_previews()
@@ -1923,6 +1956,7 @@ class CaptureService(Node):
                 )
 
     def _restart_failed_previews(self, dead: List[str]) -> None:
+        self._preview_watchdog_epoch_mono = time.monotonic()
         cam0 = int(self.get_parameter("cam0_index").value)
         cam1 = int(self.get_parameter("cam1_index").value)
         ns0 = str(self.get_parameter("cam0_namespace").value)

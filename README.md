@@ -80,6 +80,39 @@ Or from main bringup:
 ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 ```
 
+`rover_app.launch.py` now starts a `gpsd_client` component by default, so `/fix` is published automatically when `gpsd` is running and has GNSS data.
+
+Useful GNSS launch args:
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  start_gpsd_client:=true \
+  gpsd_host:=127.0.0.1 \
+  gpsd_port:=2947
+```
+
+Disable GNSS publisher startup (if you run another GNSS ROS node):
+```bash
+ros2 launch subsea_bringup rover_app.launch.py start_gpsd_client:=false
+```
+
+### One-command field startup (touchscreen friendly)
+Start app + GNSS publisher + localization with one command:
+```bash
+./scripts/run_rover_field.sh
+```
+
+Quick field diagnostics (gpsd/PPS/chrony + ROS topic checks):
+```bash
+./scripts/check_rover_field.sh
+```
+
+Useful options:
+```bash
+./scripts/run_rover_field.sh --still
+./scripts/run_rover_field.sh --no-localization
+./scripts/run_rover_field.sh --skip-service-restart
+```
+
 ## Capture mode for deblurring
 `subsea_capture` now defaults to `capture_mode:=stream` in rover bringup. This keeps previews running and captures directly from live ROS image streams, preserving frame timestamps for motion-compensation workflows.
 

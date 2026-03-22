@@ -11,7 +11,8 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression, EnvironmentVariable, TextSubstitution
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
-from launch_ros.actions import Node
+from launch_ros.actions import Node, ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterValue
 
 import os
@@ -20,6 +21,9 @@ from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
     # --- User-friendly knobs
+    start_gpsd_client = LaunchConfiguration('start_gpsd_client')
+    gpsd_host = LaunchConfiguration('gpsd_host')
+    gpsd_port = LaunchConfiguration('gpsd_port')
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
@@ -46,6 +50,7 @@ def generate_launch_description():
     enable_gpio_button_bool = ParameterValue(enable_gpio_button, value_type=bool)
     gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
     gpio_button_debounce_ms_int = ParameterValue(gpio_button_debounce_ms, value_type=int)
+    gpsd_port_int = ParameterValue(gpsd_port, value_type=int)
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
@@ -160,6 +165,30 @@ def generate_launch_description():
         condition=cam_condition_respawn,
     )
 
+    # --- GNSS publisher from local gpsd
+    gpsd_client = ComposableNode(
+        package='gpsd_client',
+        plugin='gpsd_client::GPSDClientComponent',
+        name='gpsd_client',
+        parameters=[{
+            'host': gpsd_host,
+            'port': gpsd_port_int,
+        }],
+        remappings=[
+            ('fix', '/fix'),
+            ('extended_fix', '/extended_fix'),
+        ],
+    )
+    gpsd_container = ComposableNodeContainer(
+        name='gps_container',
+        namespace='/',
+        package='rclcpp_components',
+        executable='component_container_mt',
+        composable_node_descriptions=[gpsd_client],
+        output='screen',
+        condition=IfCondition(start_gpsd_client),
+    )
+
     # --- Capture service (stream-synced by default; still mode optional)
     capture = Node(
         package='subsea_capture',
@@ -270,6 +299,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument('start_gpsd_client', default_value='true'),
+        DeclareLaunchArgument('gpsd_host', default_value='127.0.0.1'),
+        DeclareLaunchArgument('gpsd_port', default_value='2947'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
@@ -292,6 +324,7 @@ def generate_launch_description():
 
         *env_actions,
 
+        gpsd_container,
         cam0, cam1, cam0_r, cam1_r,
         capture,
         ui,

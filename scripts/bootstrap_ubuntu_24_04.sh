@@ -135,6 +135,7 @@ install_base_packages() {
     v4l-utils \
     ros-${ROS_DISTRO}-ament-cmake \
     ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-gpsd-client \
     ros-${ROS_DISTRO}-image-transport \
     ros-${ROS_DISTRO}-robot-localization \
     ros-${ROS_DISTRO}-ros-base \

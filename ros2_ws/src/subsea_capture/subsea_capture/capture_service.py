@@ -6,6 +6,7 @@ import time
 import subprocess
 import signal
 import threading
+import traceback
 from collections import deque
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Tuple, Optional, Callable
@@ -589,6 +590,7 @@ class CaptureService(Node):
                     self.get_logger().info(
                         f"Applying preview parameter update ({reason}): restarting previews"
                     )
+                    self._stop_previews_managed()
                     self._start_previews(camera_count=self._detected_cam_count)
             except Exception as e:
                 self.get_logger().error(f"Failed to apply preview parameter update: {e}")
@@ -974,7 +976,7 @@ class CaptureService(Node):
 
         self.get_logger().info(f"GPIO button pressed -> capture session={session}")
         with self._capture_lock:
-            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture_safe(
                 session,
                 out_dir,
                 quality,
@@ -1211,13 +1213,16 @@ class CaptureService(Node):
         # Generic fallback for less common encodings.
         return self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 
-    def _write_jpeg_bgr(self, path: str, frame, quality: int) -> bool:
-        ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
-        if not ok:
-            return False
-        with open(path, "wb") as f:
-            f.write(buf.tobytes())
-        return True
+    def _write_jpeg_bgr(self, path: str, frame, quality: int) -> Tuple[bool, str]:
+        try:
+            ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)])
+            if not ok:
+                return False, "cv2.imencode failed"
+            with open(path, "wb") as f:
+                f.write(buf.tobytes())
+            return True, ""
+        except Exception as e:
+            return False, str(e)
 
     def _nearest_fix(self, stamp_ns: int) -> Optional[NavSatFix]:
         with self._sensor_lock:
@@ -1911,6 +1916,8 @@ class CaptureService(Node):
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=self._preview_env())
         except subprocess.TimeoutExpired:
             return False, f"TimeoutExpired running: {' '.join(cmd)}"
+        except Exception as e:
+            return False, f"Failed running {' '.join(cmd)}: {e}"
 
         ok = (p.returncode == 0) and os.path.exists(out_path) and os.path.getsize(out_path) > 0
         if ok:
@@ -2049,8 +2056,13 @@ class CaptureService(Node):
                 cam0_stamp=stamp if cam0_path else None,
                 cam1_stamp=stamp if cam1_path else None,
             )
-            meta_path = self._write_capture_metadata(out_dir, session, metadata)
-            msg = f"{msg}; metadata={meta_path}"
+            try:
+                meta_path = self._write_capture_metadata(out_dir, session, metadata)
+                msg = f"{msg}; metadata={meta_path}"
+            except Exception as e:
+                warn = f"metadata write failed: {e}"
+                self.get_logger().error(f"Capture metadata write failed: {e}")
+                msg = f"{msg}; warning={warn}"
 
         self.get_logger().info("Capture OK")
         return True, msg, cam0_path, cam1_path, stamp
@@ -2232,8 +2244,9 @@ class CaptureService(Node):
             )
             return False, fail_msg, "", "", trigger_stamp
 
-        if not self._write_jpeg_bgr(cam0_path, frame0, quality):
-            fail_msg = "CAPTURE FAILED (stream mode): cam0 JPEG encode/write failed"
+        cam0_ok, cam0_write_err = self._write_jpeg_bgr(cam0_path, frame0, quality)
+        if not cam0_ok:
+            fail_msg = f"CAPTURE FAILED (stream mode): cam0 JPEG encode/write failed: {cam0_write_err}"
             self.get_logger().error(fail_msg)
             self._publish_capture_debug(
                 {
@@ -2266,8 +2279,9 @@ class CaptureService(Node):
                     }
                 )
                 return False, fail_msg, cam0_path, "", trigger_stamp
-            if not self._write_jpeg_bgr(cam1_path, frame1, quality):
-                fail_msg = "CAPTURE FAILED (stream mode): cam1 JPEG encode/write failed"
+            cam1_ok, cam1_write_err = self._write_jpeg_bgr(cam1_path, frame1, quality)
+            if not cam1_ok:
+                fail_msg = f"CAPTURE FAILED (stream mode): cam1 JPEG encode/write failed: {cam1_write_err}"
                 self.get_logger().error(fail_msg)
                 self._publish_capture_debug(
                     {
@@ -2300,8 +2314,13 @@ class CaptureService(Node):
                 cam0_stamp=cam0_stamp if cam0_stamp is not None else trigger_stamp,
                 cam1_stamp=cam1_stamp,
             )
-            meta_path = self._write_capture_metadata(out_dir, session, metadata)
-            msg = f"{msg}; metadata={meta_path}"
+            try:
+                meta_path = self._write_capture_metadata(out_dir, session, metadata)
+                msg = f"{msg}; metadata={meta_path}"
+            except Exception as e:
+                warn = f"metadata write failed: {e}"
+                self.get_logger().error(f"Capture metadata write failed: {e}")
+                msg = f"{msg}; warning={warn}"
 
         self.get_logger().info("Capture OK (stream mode)")
         return True, msg, cam0_path, cam1_path, stamp
@@ -2318,9 +2337,24 @@ class CaptureService(Node):
             return self._perform_capture_stream(session_in, out_dir_in, quality_in, feedback_cb=feedback_cb)
         return self._perform_capture_still(session_in, out_dir_in, quality_in, feedback_cb=feedback_cb)
 
+    def _perform_capture_safe(
+        self,
+        session_in: str,
+        out_dir_in: str,
+        quality_in: int,
+        feedback_cb: Optional[Callable[[str], None]] = None,
+    ) -> Tuple[bool, str, str, str, TimeMsg]:
+        try:
+            return self._perform_capture(session_in, out_dir_in, quality_in, feedback_cb=feedback_cb)
+        except Exception as e:
+            msg = f"CAPTURE FAILED (internal error): {e}"
+            self.get_logger().error(msg)
+            self.get_logger().error(traceback.format_exc())
+            return False, msg, "", "", now_ros_time(self)
+
     def on_capture(self, req: CapturePair.Request, res: CapturePair.Response) -> CapturePair.Response:
         with self._capture_lock:
-            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture_safe(
                 req.session_id,
                 req.output_dir,
                 int(req.jpeg_quality),
@@ -2359,7 +2393,7 @@ class CaptureService(Node):
             goal_handle.publish_feedback(fb)
 
         with self._capture_lock:
-            success, message, cam0_path, cam1_path, stamp = self._perform_capture(
+            success, message, cam0_path, cam1_path, stamp = self._perform_capture_safe(
                 goal.session_id,
                 goal.output_dir,
                 int(goal.jpeg_quality),

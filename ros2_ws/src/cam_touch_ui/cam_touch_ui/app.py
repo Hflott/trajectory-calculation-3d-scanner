@@ -291,8 +291,27 @@ def main() -> int:
     CAM0_INDEX = 0
     CAM1_INDEX = 1
 
-    # Clean out any stale camera nodes from previous runs (prevents “busy” / weirdness)
-    subprocess.run(["bash", "-lc", "pkill -f 'camera_ros.*camera_node' || true; pkill -f 'install/camera_ros/lib/camera_ros/camera_node' || true"], check=False)
+    # Non-destructive check: warn about existing camera nodes but never kill
+    # processes we did not start ourselves.
+    try:
+        existing = subprocess.run(
+            [
+                "pgrep",
+                "-af",
+                "camera_ros.*camera_node|install/camera_ros/lib/camera_ros/camera_node",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if existing.returncode == 0 and existing.stdout.strip():
+            print(
+                "cam_touch_ui: existing camera_node processes detected; "
+                "not terminating them automatically.",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass
 
     ros_argv = sys.argv
     qt_argv = remove_ros_args(sys.argv)

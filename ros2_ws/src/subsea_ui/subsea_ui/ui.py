@@ -719,14 +719,16 @@ class MainWindow(QWidget):
         self.preview_relay_fps = max(1, int(self.ros_node.get_parameter("preview_relay_fps").value))
 
         # ---- Preview tab
-        indicator_row = QHBoxLayout()
-        indicator_row.setSpacing(10)
-        indicator_row.addWidget(self.ind_cam0)
-        indicator_row.addWidget(self.ind_cam1)
-        indicator_row.addWidget(self.ind_srv)
-        indicator_row.addWidget(self.ind_gnss_lock)
-        indicator_row.addWidget(self.ind_corr_link)
-        indicator_row.addStretch(1)
+        # Keep indicators readable on small screens by splitting into two rows.
+        indicator_grid = QGridLayout()
+        indicator_grid.setHorizontalSpacing(10)
+        indicator_grid.setVerticalSpacing(4)
+        indicator_grid.addWidget(self.ind_cam0, 0, 0)
+        indicator_grid.addWidget(self.ind_cam1, 0, 1)
+        indicator_grid.addWidget(self.ind_srv, 0, 2)
+        indicator_grid.addWidget(self.ind_gnss_lock, 1, 0)
+        indicator_grid.addWidget(self.ind_corr_link, 1, 1)
+        indicator_grid.setColumnStretch(3, 1)
 
         controls_row = QHBoxLayout()
         controls_row.setSpacing(10)
@@ -738,7 +740,7 @@ class MainWindow(QWidget):
 
         top_block = QVBoxLayout()
         top_block.setSpacing(6)
-        top_block.addLayout(indicator_row)
+        top_block.addLayout(indicator_grid)
         top_block.addLayout(controls_row)
 
         preview_row = QHBoxLayout()
@@ -839,53 +841,37 @@ class MainWindow(QWidget):
         self.gnss_freshness.setWordWrap(True)
         self.gnss_pos_acc.setWordWrap(True)
 
-        def _card(title: str, *widgets: QWidget) -> QFrame:
-            box = QFrame()
-            box.setFrameShape(QFrame.StyledPanel)
-            box.setStyleSheet(
-                "QFrame { background:#141a22; border:1px solid #25313f; border-radius:10px; }"
-            )
-            lay = QVBoxLayout()
-            lay.setContentsMargins(10, 10, 10, 10)
-            lay.setSpacing(6)
-            ttl = QLabel(title)
-            ttl.setStyleSheet("font-size:14px; font-weight:700; color:#9ec7de;")
-            lay.addWidget(ttl)
-            for w in widgets:
-                lay.addWidget(w)
-            box.setLayout(lay)
-            return box
+        self._gnss_card_solution = self._make_gnss_card(
+            "Solution", self.gnss_status, self.gnss_fix_type, self.gnss_fix_meta, self.gnss_corr
+        )
+        self._gnss_card_accuracy = self._make_gnss_card("Accuracy", self.gnss_pos_acc, self.gnss_cov)
+        self._gnss_card_position = self._make_gnss_card("Position", self.gnss_latlon, self.gnss_alt, self.gnss_fix_stamp)
+        self._gnss_card_timing = self._make_gnss_card(
+            "Timing", self.gnss_freshness, self.gnss_fix_age, self.gnss_time_ref_age, self.gnss_time_ref_src
+        )
+        self._gnss_card_imu = self._make_gnss_card("IMU", self.imu_stamp, self.imu_age, self.imu_vals)
+        self._gnss_cards = [
+            self._gnss_card_solution,
+            self._gnss_card_accuracy,
+            self._gnss_card_position,
+            self._gnss_card_timing,
+            self._gnss_card_imu,
+        ]
 
-        gnss_grid = QGridLayout()
-        gnss_grid.setSpacing(10)
-        gnss_grid.addWidget(
-            _card("Solution", self.gnss_status, self.gnss_fix_type, self.gnss_fix_meta, self.gnss_corr),
-            0, 0
-        )
-        gnss_grid.addWidget(
-            _card("Accuracy", self.gnss_pos_acc, self.gnss_cov),
-            0, 1
-        )
-        gnss_grid.addWidget(
-            _card("Position", self.gnss_latlon, self.gnss_alt, self.gnss_fix_stamp),
-            1, 0
-        )
-        gnss_grid.addWidget(
-            _card("Timing", self.gnss_freshness, self.gnss_fix_age, self.gnss_time_ref_age, self.gnss_time_ref_src),
-            1, 1
-        )
-        gnss_grid.addWidget(
-            _card("IMU", self.imu_stamp, self.imu_age, self.imu_vals),
-            2, 0, 1, 2
-        )
+        self._gnss_grid = QGridLayout()
+        self._gnss_grid.setSpacing(10)
+        self._reflow_gnss_cards(1200)
 
         gnss_root.addWidget(self.gnss_ready)
         gnss_root.addWidget(self.gnss_quality)
-        gnss_root.addLayout(gnss_grid)
+        gnss_root.addLayout(self._gnss_grid)
         gnss_root.addWidget(self.gnss_time_ref)
         gnss_root.addStretch(1)
         gnss_tab.setLayout(gnss_root)
-        self._tab_idx_gnss = self.tabs.addTab(gnss_tab, "GNSS")
+        gnss_scroll = QScrollArea()
+        gnss_scroll.setWidgetResizable(True)
+        gnss_scroll.setWidget(gnss_tab)
+        self._tab_idx_gnss = self.tabs.addTab(gnss_scroll, "GNSS")
 
         # ---- Capture tab (nested tabs for larger image views)
         cap_page = QWidget()
@@ -1013,7 +999,10 @@ class MainWindow(QWidget):
         prev_root = QVBoxLayout()
         prev_root.setContentsMargins(10, 10, 10, 10)
         prev_root.setSpacing(10)
-        preview_note = QLabel("Capture stream FPS affects capture quality/timing. Relay FPS affects only UI preview load.")
+        preview_note = QLabel(
+            "Capture stream FPS affects capture quality/timing. Relay FPS and UI FPS cap visible preview "
+            "(effective on-screen FPS is roughly min(stream, relay, UI))."
+        )
         preview_note.setStyleSheet("color:#B0B0B0;")
         preview_note.setWordWrap(True)
         prev_root.addWidget(preview_note)
@@ -1124,6 +1113,45 @@ class MainWindow(QWidget):
         for lab in (self.prev0, self.prev1, self.cap0, self.cap1, self.res0, self.res1):
             lab.setMinimumSize(110, 70)
 
+    def _make_gnss_card(self, title: str, *widgets: QWidget) -> QFrame:
+        box = QFrame()
+        box.setFrameShape(QFrame.StyledPanel)
+        box.setStyleSheet(
+            "QFrame { background:#171717; border:1px solid #2E2E2E; border-radius:10px; }"
+        )
+        lay = QVBoxLayout()
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(6)
+        ttl = QLabel(title)
+        ttl.setStyleSheet("font-size:14px; font-weight:700; color:#D8D8D8;")
+        lay.addWidget(ttl)
+        for w in widgets:
+            lay.addWidget(w)
+        box.setLayout(lay)
+        return box
+
+    def _reflow_gnss_cards(self, width_px: int) -> None:
+        # Keep cards readable on non-fullscreen/touch windows.
+        if not hasattr(self, "_gnss_grid"):
+            return
+        cols = 1 if int(width_px) < 1200 else 2
+        while self._gnss_grid.count() > 0:
+            self._gnss_grid.takeAt(0)
+
+        if cols == 1:
+            for row, card in enumerate(self._gnss_cards):
+                self._gnss_grid.addWidget(card, row, 0)
+            self._gnss_grid.setColumnStretch(0, 1)
+            return
+
+        self._gnss_grid.addWidget(self._gnss_card_solution, 0, 0)
+        self._gnss_grid.addWidget(self._gnss_card_accuracy, 0, 1)
+        self._gnss_grid.addWidget(self._gnss_card_position, 1, 0)
+        self._gnss_grid.addWidget(self._gnss_card_timing, 1, 1)
+        self._gnss_grid.addWidget(self._gnss_card_imu, 2, 0, 1, 2)
+        self._gnss_grid.setColumnStretch(0, 1)
+        self._gnss_grid.setColumnStretch(1, 1)
+
     def toggle_fullscreen(self):
         if self.windowState() & Qt.WindowFullScreen:
             self.setWindowState(self.windowState() & ~Qt.WindowFullScreen)
@@ -1137,6 +1165,7 @@ class MainWindow(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self._reflow_gnss_cards(self.width())
         # Rescale last capture pixmaps to avoid cut-off / stale scaling
         self._apply_capture_pixmaps()
 

@@ -101,7 +101,7 @@ if [[ "${ROS_READY}" == "true" ]]; then
   run_sh "ros_topic_info_imu" "ros2 topic info /imu/data -v"
   run_sh "ros_topic_info_odom_local" "ros2 topic info /odometry/local -v"
   run_sh "ros_topic_info_odom_global" "ros2 topic info /odometry/global -v"
-  run_sh "ros_echo_fix_once" "timeout 8s ros2 topic echo /fix --once"
+  run_sh "ros_echo_fix_once" "timeout 8s ros2 topic echo /fix --qos-reliability reliable --once"
   run_sh "ros_echo_time_reference_once" "timeout 8s ros2 topic echo /time_reference --once"
   run_sh "ros_echo_imu_once" "timeout 8s ros2 topic echo /imu/data --once"
   run_sh "ros_echo_capture_debug_once" "timeout 8s ros2 topic echo /capture/debug --once"

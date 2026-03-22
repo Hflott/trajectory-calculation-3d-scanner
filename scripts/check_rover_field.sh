@@ -66,7 +66,7 @@ ros2 topic info /fix -v || true
 
 echo
 echo "== ROS message sample (/fix, 8s timeout) =="
-timeout 8s ros2 topic echo /fix --once || echo "No /fix message within 8s"
+timeout 8s ros2 topic echo /fix --qos-reliability reliable --once || echo "No /fix message within 8s"
 
 echo
 echo "== ROS topic info (/time_reference) =="

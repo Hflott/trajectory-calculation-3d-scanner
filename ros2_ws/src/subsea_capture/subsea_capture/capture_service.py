@@ -373,7 +373,15 @@ class CaptureService(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        sens_qos = QoSProfile(
+        # Keep GNSS/odom on RELIABLE to match upstream publishers like gpsd_client/robot_localization.
+        sens_qos_reliable = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        # IMU sources are commonly BEST_EFFORT.
+        sens_qos_best_effort = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -407,11 +415,36 @@ class CaptureService(Node):
         imu_topic = str(self.get_parameter("gnss_imu_topic").value)
         odom_local_topic = str(self.get_parameter("odom_local_topic").value)
         odom_global_topic = str(self.get_parameter("odom_global_topic").value)
-        self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, sens_qos)
-        self._time_ref_sub = self.create_subscription(TimeReference, time_ref_topic, self._on_time_ref, sens_qos)
-        self._imu_sub = self.create_subscription(Imu, imu_topic, self._on_imu, sens_qos)
-        self._odom_local_sub = self.create_subscription(Odometry, odom_local_topic, self._on_odom_local, sens_qos)
-        self._odom_global_sub = self.create_subscription(Odometry, odom_global_topic, self._on_odom_global, sens_qos)
+        self._fix_sub = self.create_subscription(
+            NavSatFix,
+            fix_topic,
+            self._on_fix,
+            sens_qos_reliable,
+        )
+        self._time_ref_sub = self.create_subscription(
+            TimeReference,
+            time_ref_topic,
+            self._on_time_ref,
+            sens_qos_reliable,
+        )
+        self._imu_sub = self.create_subscription(
+            Imu,
+            imu_topic,
+            self._on_imu,
+            sens_qos_best_effort,
+        )
+        self._odom_local_sub = self.create_subscription(
+            Odometry,
+            odom_local_topic,
+            self._on_odom_local,
+            sens_qos_reliable,
+        )
+        self._odom_global_sub = self.create_subscription(
+            Odometry,
+            odom_global_topic,
+            self._on_odom_global,
+            sens_qos_reliable,
+        )
         self.get_logger().info(
             "Telemetry subscribers: "
             f"fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic} "

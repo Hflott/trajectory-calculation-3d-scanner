@@ -689,6 +689,10 @@ class MainWindow(QWidget):
         self._diag_collect_running = False
         self._diag_collect_result_lock = threading.Lock()
         self._diag_collect_result: Optional[Tuple[int, str, float]] = None
+        self._diag_collect_live_lock = threading.Lock()
+        self._diag_collect_live_lines: Deque[str] = deque(maxlen=256)
+        self._diag_collect_started_mono: Optional[float] = None
+        self._diag_collect_spin_idx: int = 0
         self._require_gnss_lock_for_session = bool(
             self.ros_node.get_parameter("require_gnss_lock_for_session").value
         )
@@ -1053,6 +1057,14 @@ class MainWindow(QWidget):
         self.log_box.setMaximumBlockCount(5000)
         self.diag_collect_status = QLabel("Diagnostics bundle: idle")
         self.diag_collect_status.setStyleSheet("font-size:14px; color:#B0B0B0;")
+        self.diag_collect_stage = QLabel("Diagnostics step: idle")
+        self.diag_collect_stage.setStyleSheet("font-size:13px; color:#8A8A8A;")
+        self.diag_collect_progress = QProgressBar()
+        self.diag_collect_progress.setRange(0, 1)
+        self.diag_collect_progress.setValue(0)
+        self.diag_collect_progress.setTextVisible(False)
+        self.diag_collect_progress.setMaximumHeight(8)
+        self.diag_collect_progress.hide()
         self.diag_collect_btn = QPushButton("Collect Diagnostics Bundle")
         self.diag_collect_btn.clicked.connect(self.on_collect_diagnostics)
         self.diag_collect_btn.setMinimumHeight(34)
@@ -1067,6 +1079,8 @@ class MainWindow(QWidget):
         droot.addWidget(self.diag_overall, 0)
         droot.addWidget(self.diag_details, 0)
         droot.addWidget(self.log_box, 1)
+        droot.addWidget(self.diag_collect_stage, 0)
+        droot.addWidget(self.diag_collect_progress, 0)
         droot.addLayout(controls, 0)
         diag.setLayout(droot)
         self._tab_idx_diag = self.tabs.addTab(diag, "Diagnostics")
@@ -1185,6 +1199,8 @@ class MainWindow(QWidget):
         self._refresh_gnss()
         self._refresh_session_status()
         self._refresh_diag_status()
+        self._drain_diag_collect_live_lines()
+        self._update_diag_collect_running_status()
         self._poll_diag_collect_result()
 
     def _refresh_diag_status(self) -> None:
@@ -1254,29 +1270,84 @@ class MainWindow(QWidget):
         if not script:
             self.diag_collect_status.setText("Diagnostics bundle: script not found")
             self.diag_collect_status.setStyleSheet("font-size:14px; color:#FF6B6B;")
+            self.diag_collect_stage.setText("Diagnostics step: script not found")
+            self.diag_collect_stage.setStyleSheet("font-size:13px; color:#FF6B6B;")
             self._log("Diagnostics bundle failed: cannot locate collect_rover_diagnostics.sh")
             return
 
         self._diag_collect_running = True
+        self._diag_collect_started_mono = time.monotonic()
+        self._diag_collect_spin_idx = 0
+        with self._diag_collect_live_lock:
+            self._diag_collect_live_lines.clear()
         self.diag_collect_btn.setEnabled(False)
+        self.diag_collect_btn.setText("Collecting...")
         self.diag_collect_status.setText("Diagnostics bundle: running...")
         self.diag_collect_status.setStyleSheet("font-size:14px; color:#F3C969; font-weight:700;")
+        self.diag_collect_stage.setText("Diagnostics step: starting...")
+        self.diag_collect_stage.setStyleSheet("font-size:13px; color:#F3C969;")
+        self.diag_collect_progress.setRange(0, 0)  # indeterminate busy state
+        self.diag_collect_progress.show()
         self._log(f"Diagnostics bundle started: {script}")
 
         def _worker() -> None:
             t0 = time.monotonic()
-            proc = subprocess.run(
-                [script],
-                cwd=os.path.dirname(os.path.dirname(script)),
-                capture_output=True,
-                text=True,
-            )
-            out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+            rc = 1
+            out_lines: List[str] = []
+            try:
+                proc = subprocess.Popen(
+                    [script],
+                    cwd=os.path.dirname(os.path.dirname(script)),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                )
+                if proc.stdout is not None:
+                    for raw in proc.stdout:
+                        line = raw.rstrip("\n")
+                        out_lines.append(line)
+                        with self._diag_collect_live_lock:
+                            self._diag_collect_live_lines.append(line)
+                rc = int(proc.wait())
+            except Exception as e:
+                out_lines.append(f"Diagnostics runner exception: {e}")
+            out = "\n".join(out_lines)
             dur = max(0.0, time.monotonic() - t0)
             with self._diag_collect_result_lock:
-                self._diag_collect_result = (int(proc.returncode), out, dur)
+                self._diag_collect_result = (rc, out, dur)
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _update_diag_collect_running_status(self) -> None:
+        if not self._diag_collect_running:
+            return
+        start_m = self._diag_collect_started_mono or time.monotonic()
+        elapsed = max(0.0, time.monotonic() - start_m)
+        spinner = "|/-\\"
+        ch = spinner[self._diag_collect_spin_idx % len(spinner)]
+        self._diag_collect_spin_idx += 1
+        self.diag_collect_status.setText(
+            f"Diagnostics bundle: running {ch} {elapsed:.0f}s"
+        )
+
+    def _drain_diag_collect_live_lines(self) -> None:
+        if not self._diag_collect_running:
+            return
+        lines: List[str] = []
+        with self._diag_collect_live_lock:
+            while self._diag_collect_live_lines:
+                lines.append(self._diag_collect_live_lines.popleft())
+        if not lines:
+            return
+        for line in lines:
+            txt = line.strip()
+            if not txt:
+                continue
+            if txt.startswith("[diag]"):
+                step = txt[len("[diag]"):].strip()
+                self.diag_collect_stage.setText(f"Diagnostics step: {step}")
+            self._log(f"diag> {txt}")
 
     def _poll_diag_collect_result(self) -> None:
         if not self._diag_collect_running:
@@ -1292,6 +1363,11 @@ class MainWindow(QWidget):
         rc, out, dur = result
         self._diag_collect_running = False
         self.diag_collect_btn.setEnabled(True)
+        self.diag_collect_btn.setText("Collect Diagnostics Bundle")
+        self.diag_collect_progress.setRange(0, 1)
+        self.diag_collect_progress.setValue(0)
+        self.diag_collect_progress.hide()
+        self._diag_collect_started_mono = None
 
         archive_path = ""
         for line in out.splitlines():
@@ -1302,6 +1378,8 @@ class MainWindow(QWidget):
         if rc == 0:
             self.diag_collect_status.setText("Diagnostics bundle: done")
             self.diag_collect_status.setStyleSheet("font-size:14px; color:#52D273; font-weight:700;")
+            self.diag_collect_stage.setText("Diagnostics step: finished")
+            self.diag_collect_stage.setStyleSheet("font-size:13px; color:#52D273;")
             if archive_path:
                 self._log(f"Diagnostics bundle done in {dur:.1f}s: {archive_path}")
                 self.status.setText(f"Status: diagnostics ready -> {archive_path}")
@@ -1311,6 +1389,8 @@ class MainWindow(QWidget):
         else:
             self.diag_collect_status.setText("Diagnostics bundle: failed")
             self.diag_collect_status.setStyleSheet("font-size:14px; color:#FF6B6B; font-weight:700;")
+            self.diag_collect_stage.setText("Diagnostics step: failed")
+            self.diag_collect_stage.setStyleSheet("font-size:13px; color:#FF6B6B;")
             self._log(f"Diagnostics bundle failed in {dur:.1f}s (exit={rc})")
             self.status.setText("Status: diagnostics bundle failed (see Diagnostics tab)")
 

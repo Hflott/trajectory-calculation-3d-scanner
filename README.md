@@ -137,6 +137,8 @@ The Diagnostics tab includes a live readiness summary with explicit `OK/NO` line
 - corrections
 - cam0/cam1 stream health
 - session state
+The Diagnostics tab also has a `Collect Diagnostics Bundle` button that runs
+`scripts/collect_rover_diagnostics.sh` directly from the UI and reports done/failed state.
 
 When started, it runs continuous `ros2 bag record` logging to:
 - `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`

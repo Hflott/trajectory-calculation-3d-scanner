@@ -41,7 +41,9 @@ cat > "${LAUNCHER_FILE}" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "${ROOT_DIR}"
-exec "${RUN_SCRIPT}" "\$@"
+# Touchscreen-friendly default: avoid sudo prompt on launch.
+# gpsd/chrony should be enabled at boot; this still allows extra launch args.
+exec "${RUN_SCRIPT}" --skip-service-restart "\$@"
 EOF
 chmod +x "${LAUNCHER_FILE}"
 

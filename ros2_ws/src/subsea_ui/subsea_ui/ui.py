@@ -17,6 +17,7 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import cv2
@@ -681,6 +682,9 @@ class MainWindow(QWidget):
         self._gnss_lock_reason = "waiting for NavSatFix"
         self._corr_active = False
         self._corr_reason = "waiting for NavSatFix"
+        self._diag_collect_running = False
+        self._diag_collect_result_lock = threading.Lock()
+        self._diag_collect_result: Optional[Tuple[int, str, float]] = None
         self._require_gnss_lock_for_session = bool(
             self.ros_node.get_parameter("require_gnss_lock_for_session").value
         )
@@ -986,12 +990,23 @@ class MainWindow(QWidget):
         self.log_box = QPlainTextEdit()
         self.log_box.setReadOnly(True)
         self.log_box.setMaximumBlockCount(5000)
+        self.diag_collect_status = QLabel("Diagnostics bundle: idle")
+        self.diag_collect_status.setStyleSheet("font-size:14px; color:#B0B0B0;")
+        self.diag_collect_btn = QPushButton("Collect Diagnostics Bundle")
+        self.diag_collect_btn.clicked.connect(self.on_collect_diagnostics)
+        self.diag_collect_btn.setMinimumHeight(34)
+        self.diag_collect_btn.setStyleSheet("font-size:14px; padding:4px 10px;")
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(lambda: self.log_box.setPlainText(""))
+        controls = QHBoxLayout()
+        controls.setSpacing(10)
+        controls.addWidget(self.diag_collect_btn, 0)
+        controls.addWidget(self.diag_collect_status, 1)
+        controls.addWidget(clear_btn, 0)
         droot.addWidget(self.diag_overall, 0)
         droot.addWidget(self.diag_details, 0)
         droot.addWidget(self.log_box, 1)
-        droot.addWidget(clear_btn, 0)
+        droot.addLayout(controls, 0)
         diag.setLayout(droot)
         self._tab_idx_diag = self.tabs.addTab(diag, "Diagnostics")
 
@@ -1069,6 +1084,7 @@ class MainWindow(QWidget):
         self._refresh_gnss()
         self._refresh_session_status()
         self._refresh_diag_status()
+        self._poll_diag_collect_result()
 
     def _refresh_diag_status(self) -> None:
         cam0_age_s, cam0_fps = self.cam0.stream_stats()
@@ -1102,6 +1118,106 @@ class MainWindow(QWidget):
             f"Session         : {session_state}",
         ]
         self.diag_details.setPlainText("\n".join(lines))
+
+    def _resolve_diag_script_path(self) -> Optional[str]:
+        # Preferred explicit override.
+        env_path = os.environ.get("SUBSEA_DIAG_SCRIPT", "").strip()
+        if env_path and os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+            return env_path
+
+        candidates: List[Path] = []
+        # Common deploy location on target Raspberry Pi.
+        candidates.append(Path.home() / "trajectory-calculation-3d-scanner" / "scripts" / "collect_rover_diagnostics.sh")
+        # Search parents of this module path and cwd.
+        for base in [Path(__file__).resolve(), Path.cwd().resolve()]:
+            p = base
+            for _ in range(8):
+                p = p.parent
+                candidates.append(p / "scripts" / "collect_rover_diagnostics.sh")
+
+        seen = set()
+        for c in candidates:
+            cs = str(c)
+            if cs in seen:
+                continue
+            seen.add(cs)
+            if os.path.isfile(cs) and os.access(cs, os.X_OK):
+                return cs
+        return None
+
+    def on_collect_diagnostics(self) -> None:
+        if self._diag_collect_running:
+            self._log("Diagnostics bundle is already running")
+            return
+        script = self._resolve_diag_script_path()
+        if not script:
+            self.diag_collect_status.setText("Diagnostics bundle: script not found")
+            self.diag_collect_status.setStyleSheet("font-size:14px; color:#FF6B6B;")
+            self._log("Diagnostics bundle failed: cannot locate collect_rover_diagnostics.sh")
+            return
+
+        self._diag_collect_running = True
+        self.diag_collect_btn.setEnabled(False)
+        self.diag_collect_status.setText("Diagnostics bundle: running...")
+        self.diag_collect_status.setStyleSheet("font-size:14px; color:#F3C969; font-weight:700;")
+        self._log(f"Diagnostics bundle started: {script}")
+
+        def _worker() -> None:
+            t0 = time.monotonic()
+            proc = subprocess.run(
+                [script],
+                cwd=os.path.dirname(os.path.dirname(script)),
+                capture_output=True,
+                text=True,
+            )
+            out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
+            dur = max(0.0, time.monotonic() - t0)
+            with self._diag_collect_result_lock:
+                self._diag_collect_result = (int(proc.returncode), out, dur)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _poll_diag_collect_result(self) -> None:
+        if not self._diag_collect_running:
+            return
+        result = None
+        with self._diag_collect_result_lock:
+            if self._diag_collect_result is not None:
+                result = self._diag_collect_result
+                self._diag_collect_result = None
+        if result is None:
+            return
+
+        rc, out, dur = result
+        self._diag_collect_running = False
+        self.diag_collect_btn.setEnabled(True)
+
+        archive_path = ""
+        for line in out.splitlines():
+            if line.strip().startswith("Diagnostics archive:"):
+                archive_path = line.split(":", 1)[1].strip()
+                break
+
+        if rc == 0:
+            self.diag_collect_status.setText("Diagnostics bundle: done")
+            self.diag_collect_status.setStyleSheet("font-size:14px; color:#52D273; font-weight:700;")
+            if archive_path:
+                self._log(f"Diagnostics bundle done in {dur:.1f}s: {archive_path}")
+                self.status.setText(f"Status: diagnostics ready -> {archive_path}")
+            else:
+                self._log(f"Diagnostics bundle done in {dur:.1f}s")
+                self.status.setText("Status: diagnostics ready")
+        else:
+            self.diag_collect_status.setText("Diagnostics bundle: failed")
+            self.diag_collect_status.setStyleSheet("font-size:14px; color:#FF6B6B; font-weight:700;")
+            self._log(f"Diagnostics bundle failed in {dur:.1f}s (exit={rc})")
+            self.status.setText("Status: diagnostics bundle failed (see Diagnostics tab)")
+
+        tail = [ln for ln in out.splitlines() if ln.strip()]
+        if tail:
+            self._log("Diagnostics output tail:")
+            for ln in tail[-8:]:
+                self._log(f"  {ln}")
 
     def _session_duration_s(self) -> float:
         if (not self._session_active) or (self._session_start_mono is None):

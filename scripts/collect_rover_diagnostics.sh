@@ -8,6 +8,7 @@ WS_SETUP="${WS_DIR}/install/setup.bash"
 OUT_BASE="${1:-${HOME}/field_logs}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="${OUT_BASE}/rover_diag_${STAMP}"
+STEP_TIMEOUT_S="${STEP_TIMEOUT_S:-20}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -32,13 +33,26 @@ timestamp_utc() {
 run_sh() {
   local name="$1"
   local cmd="$2"
+  echo "[diag] ${name} ..."
+  local rc=0
   {
     echo "# ${name}"
     echo "# command: ${cmd}"
     echo "# time: $(timestamp_utc)"
     echo
-    bash -lc "${cmd}"
-  } >"${OUT_DIR}/${name}.txt" 2>&1 || true
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "${STEP_TIMEOUT_S}s" bash -lc "${cmd}"
+    else
+      bash -lc "${cmd}"
+    fi
+  } >"${OUT_DIR}/${name}.txt" 2>&1 || rc=$?
+  if [[ ${rc} -eq 124 ]]; then
+    echo "[diag] ${name}: timeout after ${STEP_TIMEOUT_S}s (partial output saved)"
+  elif [[ ${rc} -ne 0 ]]; then
+    echo "[diag] ${name}: non-zero exit (${rc}), continuing"
+  else
+    echo "[diag] ${name}: ok"
+  fi
 }
 
 note() {

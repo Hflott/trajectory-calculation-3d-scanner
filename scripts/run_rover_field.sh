@@ -11,6 +11,7 @@ START_LOCALIZATION="true"
 CAPTURE_MODE="stream"
 RESTART_SERVICES="true"
 GNSS_PREFLIGHT="true"
+ROS_CLEANUP="true"
 EXTRA_ARGS=()
 
 source_safe() {
@@ -43,6 +44,7 @@ Options:
   --localization          Set start_localization:=true (default)
   --skip-gnss-preflight   Skip GNSS UART/gpsd preflight checks
   --skip-service-restart  Do not restart gpsd/chrony before launch
+  --skip-ros-cleanup      Do not stop stale ROS daemons/processes before launch
   -h, --help              Show this help
 
 Any additional tokens are passed through to:
@@ -76,6 +78,10 @@ while [[ $# -gt 0 ]]; do
       GNSS_PREFLIGHT="false"
       shift
       ;;
+    --skip-ros-cleanup)
+      ROS_CLEANUP="false"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -102,6 +108,17 @@ fi
 
 source_safe "${ROS_SETUP}"
 source_safe "${WS_SETUP}"
+
+run_ros_prelaunch_cleanup() {
+  # Clear stale ROS graph cache and rover app processes from previous runs.
+  ros2 daemon stop >/dev/null 2>&1 || true
+  if command -v pkill >/dev/null 2>&1; then
+    pkill -f "ros2 launch subsea_bringup rover_app.launch.py" >/dev/null 2>&1 || true
+    pkill -f "subsea_ui_node|capture_service|navsat_transform_node|ekf_node" >/dev/null 2>&1 || true
+    pkill -f "component_container_mt.*gps_container|__node:=gps_container" >/dev/null 2>&1 || true
+  fi
+  sleep 0.3
+}
 
 run_gnss_preflight_as_root() {
   local tty_rule='KERNEL=="ttyAMA0", GROUP="dialout", MODE="0660"'
@@ -136,6 +153,11 @@ run_gnss_preflight_as_root() {
 }
 
 if command -v systemctl >/dev/null 2>&1; then
+  if [[ "${ROS_CLEANUP}" == "true" ]]; then
+    echo "Running ROS prelaunch cleanup..."
+    run_ros_prelaunch_cleanup
+  fi
+
   if [[ "${GNSS_PREFLIGHT}" == "true" ]]; then
     if sudo -n true >/dev/null 2>&1; then
       echo "Applying GNSS UART preflight..."
@@ -159,6 +181,7 @@ echo "Starting rover app..."
 echo "  start_localization:=${START_LOCALIZATION}"
 echo "  capture_mode:=${CAPTURE_MODE}"
 echo "  gnss_preflight:=${GNSS_PREFLIGHT}"
+echo "  ros_cleanup:=${ROS_CLEANUP}"
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   echo "  extra args: ${EXTRA_ARGS[*]}"
 fi

@@ -831,16 +831,6 @@ class MainWindow(QWidget):
             "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
             "QProgressBar::chunk { border-radius:8px; background:#6B6B6B; }"
         )
-        self.imu_quality = QProgressBar()
-        self.imu_quality.setRange(0, 100)
-        self.imu_quality.setValue(0)
-        self.imu_quality.setFormat("IMU health: %p%")
-        self.imu_quality.setTextVisible(True)
-        self.imu_quality.setMinimumHeight(22)
-        self.imu_quality.setStyleSheet(
-            "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
-            "QProgressBar::chunk { border-radius:8px; background:#6B6B6B; }"
-        )
 
         for l in (
             self.gnss_fix_age,
@@ -891,7 +881,6 @@ class MainWindow(QWidget):
 
         gnss_root.addWidget(self.gnss_ready)
         gnss_root.addWidget(self.gnss_quality)
-        gnss_root.addWidget(self.imu_quality)
         gnss_root.addLayout(self._gnss_grid)
         gnss_root.addWidget(self.gnss_time_ref)
         gnss_root.addStretch(1)
@@ -1937,35 +1926,6 @@ class MainWindow(QWidget):
         self.gnss_quality.setStyleSheet(
             "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
             f"QProgressBar::chunk {{ border-radius:8px; background:{chunk}; }}"
-        )
-
-        imu_score = 0
-        if imu_age_ms is not None:
-            if imu_age_ms <= 50.0:
-                imu_score = 100
-            elif imu_age_ms <= 100.0:
-                imu_score = 90
-            elif imu_age_ms <= 200.0:
-                imu_score = 80
-            elif imu_age_ms <= 500.0:
-                imu_score = 60
-            elif imu_age_ms <= 1000.0:
-                imu_score = 40
-            elif imu_age_ms <= 3000.0:
-                imu_score = 20
-            else:
-                imu_score = 5
-
-        self.imu_quality.setValue(int(max(0, min(100, imu_score))))
-        if imu_score >= 80:
-            imu_chunk = "#52D273"
-        elif imu_score >= 50:
-            imu_chunk = "#F3C969"
-        else:
-            imu_chunk = "#FF6B6B"
-        self.imu_quality.setStyleSheet(
-            "QProgressBar { border:1px solid #2B2B2B; border-radius:8px; text-align:center; background:#151515; } "
-            f"QProgressBar::chunk {{ border-radius:8px; background:{imu_chunk}; }}"
         )
 
         if lock_state == "locked" and corr_state == "on":

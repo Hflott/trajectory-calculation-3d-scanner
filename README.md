@@ -90,6 +90,16 @@ ros2 launch subsea_bringup rover_app.launch.py \
   gpsd_port:=2947
 ```
 
+Useful IMU launch args (BNO085 over I2C):
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  start_imu_node:=true \
+  imu_topic:=/imu/data \
+  imu_frame_id:=imu_link \
+  imu_rate_hz:=100.0 \
+  imu_i2c_address:=74
+```
+
 Disable GNSS publisher startup (if you run another GNSS ROS node):
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py start_gpsd_client:=false
@@ -99,6 +109,20 @@ ros2 launch subsea_bringup rover_app.launch.py start_gpsd_client:=false
 Start app + GNSS publisher + localization with one command:
 ```bash
 ./scripts/run_rover_field.sh
+```
+This also enables the BNO085 IMU node (`start_imu_node:=true`) when available.
+
+One-time BNO085 Python dependencies on Raspberry Pi:
+```bash
+sudo apt-get install -y python3-pip python3-libgpiod python3-dev i2c-tools
+sudo pip3 install --break-system-packages adafruit-blinka adafruit-circuitpython-bno08x
+```
+
+Quick IMU checks:
+```bash
+sudo i2cdetect -y -r 1     # expect 0x4a or 0x4b
+ros2 topic hz /imu/data
+ros2 topic echo /imu/data --once
 ```
 
 Quick field diagnostics (gpsd/PPS/chrony + ROS topic checks):

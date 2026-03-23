@@ -22,6 +22,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gpsd_json_fix_bridge = subsea_bringup.gpsd_json_fix_bridge:main',
+            'bno085_imu_node = subsea_bringup.bno085_imu_node:main',
         ],
     },
 )

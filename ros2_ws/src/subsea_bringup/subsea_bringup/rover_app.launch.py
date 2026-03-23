@@ -25,6 +25,11 @@ def generate_launch_description():
     use_gpsd_json_bridge = LaunchConfiguration('use_gpsd_json_bridge')
     gpsd_host = LaunchConfiguration('gpsd_host')
     gpsd_port = LaunchConfiguration('gpsd_port')
+    start_imu_node = LaunchConfiguration('start_imu_node')
+    imu_topic = LaunchConfiguration('imu_topic')
+    imu_frame_id = LaunchConfiguration('imu_frame_id')
+    imu_rate_hz = LaunchConfiguration('imu_rate_hz')
+    imu_i2c_address = LaunchConfiguration('imu_i2c_address')
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
@@ -52,6 +57,8 @@ def generate_launch_description():
     gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
     gpio_button_debounce_ms_int = ParameterValue(gpio_button_debounce_ms, value_type=int)
     gpsd_port_int = ParameterValue(gpsd_port, value_type=int)
+    imu_rate_hz_float = ParameterValue(imu_rate_hz, value_type=float)
+    imu_i2c_address_int = ParameterValue(imu_i2c_address, value_type=int)
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
@@ -210,6 +217,20 @@ def generate_launch_description():
         condition=IfCondition(use_gpsd_json_bridge),
     )
 
+    imu_node = Node(
+        package='subsea_bringup',
+        executable='bno085_imu_node',
+        name='bno085_imu',
+        output='screen',
+        parameters=[{
+            'imu_topic': imu_topic,
+            'frame_id': imu_frame_id,
+            'rate_hz': imu_rate_hz_float,
+            'i2c_address': imu_i2c_address_int,
+        }],
+        condition=IfCondition(start_imu_node),
+    )
+
     # --- Capture service (stream-synced by default; still mode optional)
     capture = Node(
         package='subsea_capture',
@@ -328,6 +349,11 @@ def generate_launch_description():
         DeclareLaunchArgument('use_gpsd_json_bridge', default_value='true'),
         DeclareLaunchArgument('gpsd_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('gpsd_port', default_value='2947'),
+        DeclareLaunchArgument('start_imu_node', default_value='false'),
+        DeclareLaunchArgument('imu_topic', default_value='/imu/data'),
+        DeclareLaunchArgument('imu_frame_id', default_value='imu_link'),
+        DeclareLaunchArgument('imu_rate_hz', default_value='100.0'),
+        DeclareLaunchArgument('imu_i2c_address', default_value='74'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
@@ -352,6 +378,7 @@ def generate_launch_description():
 
         gpsd_container,
         gpsd_json_bridge,
+        imu_node,
         cam0, cam1, cam0_r, cam1_r,
         capture,
         ui,

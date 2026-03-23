@@ -111,6 +111,11 @@ Create a shareable diagnostics bundle (single command, includes gpsd/PPS/chrony/
 ./scripts/collect_rover_diagnostics.sh
 ```
 
+Organize imported `sessions/` + `diagnostics/` folders in this repo into date-based layout:
+```bash
+./scripts/organize_field_data.sh
+```
+
 Useful options:
 ```bash
 ./scripts/run_rover_field.sh --still
@@ -152,7 +157,7 @@ The Diagnostics tab also has a `Collect Diagnostics Bundle` button that runs
 `scripts/collect_rover_diagnostics.sh` directly from the UI and reports done/failed state.
 
 When started, it runs continuous `ros2 bag record` logging to:
-- `~/captures/sessions/sess_YYYYmmdd_HHMMSS/bag`
+- `~/captures/sessions/YYYY/MM/DD/sess_YYYYmmdd_HHMMSS/bag`
 - with session metadata in `session_manifest.json`
 - and recorder stdout/stderr in `rosbag_record.log`
 

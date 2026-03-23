@@ -121,15 +121,51 @@ fi
 
 SESSION_DIR="${CAP_DIR}/sessions"
 if [[ -d "${SESSION_DIR}" ]]; then
-  run_sh "session_listing" "ls -1dt '${SESSION_DIR}'/sess_* 2>/dev/null | head -n 10"
+  mapfile -t SESSION_PATHS < <(
+    python3 - "${SESSION_DIR}" <<'PY'
+import os
+import re
+import sys
+
+root = sys.argv[1]
+pat = re.compile(r"^sess_\d{8}_\d{6}$")
+rows = []
+for dirpath, dirnames, _ in os.walk(root):
+    base = os.path.basename(dirpath)
+    if not pat.match(base):
+        continue
+    try:
+        mtime = os.path.getmtime(dirpath)
+    except OSError:
+        continue
+    rows.append((mtime, dirpath))
+
+rows.sort(reverse=True)
+for _, p in rows:
+    print(p)
+PY
+  )
+  {
+    echo "# session_listing"
+    echo "# command: recursive find '${SESSION_DIR}' sess_*"
+    echo "# time: $(timestamp_utc)"
+    echo
+    if [[ ${#SESSION_PATHS[@]} -eq 0 ]]; then
+      echo "(none)"
+    else
+      for d in "${SESSION_PATHS[@]:0:10}"; do
+        echo "${d}"
+      done
+    fi
+  } >"${OUT_DIR}/session_listing.txt"
   mkdir -p "${OUT_DIR}/session_logs"
-  while IFS= read -r d; do
+  for d in "${SESSION_PATHS[@]:0:3}"; do
     [[ -d "$d" ]] || continue
     b="$(basename "$d")"
     mkdir -p "${OUT_DIR}/session_logs/${b}"
     cp -f "${d}/session_manifest.json" "${OUT_DIR}/session_logs/${b}/" 2>/dev/null || true
     cp -f "${d}/rosbag_record.log" "${OUT_DIR}/session_logs/${b}/" 2>/dev/null || true
-  done < <(ls -1dt "${SESSION_DIR}"/sess_* 2>/dev/null | head -n 3)
+  done
 fi
 
 if [[ -d "${HOME}/.ros/log/latest" ]]; then

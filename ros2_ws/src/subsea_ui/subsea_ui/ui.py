@@ -1481,8 +1481,10 @@ class MainWindow(QWidget):
             return
 
         os.makedirs(self._session_root_dir(), exist_ok=True)
-        session_id = datetime.now().strftime("sess_%Y%m%d_%H%M%S")
-        session_dir = os.path.join(self._session_root_dir(), session_id)
+        now = datetime.now()
+        session_id = now.strftime("sess_%Y%m%d_%H%M%S")
+        session_day_dir = now.strftime("%Y/%m/%d")
+        session_dir = os.path.join(self._session_root_dir(), session_day_dir, session_id)
         bag_dir = os.path.join(session_dir, "bag")
         os.makedirs(session_dir, exist_ok=True)
 

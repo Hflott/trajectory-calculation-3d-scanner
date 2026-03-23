@@ -318,12 +318,12 @@ class GnssSub(Node):
         self._time_ref_rx_mono: Optional[float] = None
         self._imu_rx_mono: Optional[float] = None
 
-        # gpsd_client publishes /fix as RELIABLE. Subscribe with matching QoS
-        # so GNSS UI remains stable across DDS implementations.
-        qos_reliable = QoSProfile(
+        # GNSS publishers vary in QoS (gpsd_client uses RELIABLE, many drivers use
+        # BEST_EFFORT). Use BEST_EFFORT here so the UI can display data from both.
+        qos_fix = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=5,
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
         qos_best_effort = QoSProfile(
@@ -332,12 +332,12 @@ class GnssSub(Node):
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, qos_reliable)
+        self._fix_sub = self.create_subscription(NavSatFix, fix_topic, self._on_fix, qos_fix)
         self._time_ref_sub = self.create_subscription(
             TimeReference,
             time_ref_topic,
             self._on_time_ref,
-            qos_reliable,
+            qos_fix,
         )
         self._imu_sub = self.create_subscription(Imu, imu_topic, self._on_imu, qos_best_effort)
         self.get_logger().info(f"GNSS sub: fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic}")

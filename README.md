@@ -97,7 +97,8 @@ ros2 launch subsea_bringup rover_app.launch.py \
   imu_topic:=/imu/data \
   imu_frame_id:=imu_link \
   imu_rate_hz:=100.0 \
-  imu_i2c_address:=74
+  imu_i2c_address:=74 \
+  imu_timestamp_mode:=read_end
 ```
 
 Disable GNSS publisher startup (if you run another GNSS ROS node):
@@ -224,7 +225,7 @@ For each capture session it writes:
 Capture metadata now also includes:
 - interpolated odometry at each camera timestamp (`interp_odom_local`, `interp_odom_global`)
 - a trajectory bundle sampled at `trajectory_sample_rate_hz` (default `100.0`)
-- per-camera deblur diagnostics (kernel length/angle, IMU delta, method, output path)
+- per-camera deblur diagnostics with exposure-window gyro integration (`exposure_start/end`, `gyro_samples_used`, `delta_theta_rad`, blur vector, PSF settings, output path)
 
 Live stream-capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
 
@@ -288,7 +289,12 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_fps:=15 \
   trajectory_sample_rate_hz:=100.0 \
   trajectory_window_ms:=1000.0 \
-  deblur_exposure_ms:=8.0 \
+  deblur_exposure_time_us:=3000 \
+  deblur_image_stamp_reference:=midpoint \
+  deblur_timestamp_source:=pps_disciplined_system_clock \
+  deblur_allow_nearest_fallback:=false \
+  deblur_require_time_reference:=true \
+  deblur_max_time_reference_age_ms:=2000.0 \
   deblur_strength:=1.0 \
   deblur_iterations:=12
 ```

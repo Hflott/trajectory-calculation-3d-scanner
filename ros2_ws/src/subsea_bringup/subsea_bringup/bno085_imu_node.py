@@ -18,6 +18,8 @@ class Bno085ImuNode(Node):
         self.declare_parameter("enable_rotation", True)
         self.declare_parameter("enable_accel", True)
         self.declare_parameter("enable_gyro", True)
+        # "read_end" approximates measurement time when HW sample timestamps are unavailable.
+        self.declare_parameter("timestamp_mode", "read_end")  # read_start|read_end
         self.declare_parameter("orientation_covariance", 0.05)
         self.declare_parameter("angular_velocity_covariance", 0.02)
         self.declare_parameter("linear_acceleration_covariance", 0.1)
@@ -29,6 +31,8 @@ class Bno085ImuNode(Node):
         self._en_rot = bool(self.get_parameter("enable_rotation").value)
         self._en_acc = bool(self.get_parameter("enable_accel").value)
         self._en_gyr = bool(self.get_parameter("enable_gyro").value)
+        stamp_mode = str(self.get_parameter("timestamp_mode").value).strip().lower()
+        self._stamp_mode = stamp_mode if stamp_mode in ("read_start", "read_end") else "read_end"
         self._cov_o = float(self.get_parameter("orientation_covariance").value)
         self._cov_w = float(self.get_parameter("angular_velocity_covariance").value)
         self._cov_a = float(self.get_parameter("linear_acceleration_covariance").value)
@@ -100,7 +104,8 @@ class Bno085ImuNode(Node):
             self.get_logger().info(
                 f"BNO085 ready on I2C address 0x{self._addr:02X}; "
                 f"features: rot={self._enabled_rotation} acc={self._enabled_accel} gyro={self._enabled_gyro}; "
-                f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz"
+                f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz "
+                f"(timestamp_mode={self._stamp_mode})"
             )
         except Exception as e:
             self._sensor = None
@@ -140,7 +145,8 @@ class Bno085ImuNode(Node):
             return
 
         msg = Imu()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        if self._stamp_mode == "read_start":
+            msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = self._frame_id
 
         # Defaults for unknown fields per sensor_msgs/Imu conventions.
@@ -208,6 +214,8 @@ class Bno085ImuNode(Node):
             self._warn_once(f"BNO085 read error: {e}; will retry init")
             return
 
+        if self._stamp_mode == "read_end":
+            msg.header.stamp = self.get_clock().now().to_msg()
         self._pub.publish(msg)
 
 

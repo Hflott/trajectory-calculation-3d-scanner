@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+from bisect import bisect_left, bisect_right
 import shutil
 import time
 import subprocess
@@ -33,6 +34,7 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 StreamFrame = Tuple[Image, float, Optional[int]]
+GyroSample = Tuple[int, Tuple[float, float, float]]
 
 
 def now_ros_time(node: Node) -> TimeMsg:
@@ -230,6 +232,18 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _lerp_vec3(
+    a: Tuple[float, float, float],
+    b: Tuple[float, float, float],
+    alpha: float,
+) -> Tuple[float, float, float]:
+    return (
+        a[0] + (b[0] - a[0]) * alpha,
+        a[1] + (b[1] - a[1]) * alpha,
+        a[2] + (b[2] - a[2]) * alpha,
+    )
+
+
 def _quat_norm(q: List[float]) -> List[float]:
     n = math.sqrt(sum(x * x for x in q))
     if n <= 1e-12:
@@ -338,11 +352,18 @@ class CaptureService(Node):
         self.declare_parameter("write_trajectory_csv", True)
         self.declare_parameter("enable_motion_deblur", True)
         self.declare_parameter("deblur_exposure_ms", 8.0)
+        self.declare_parameter("deblur_exposure_time_us", 0)
+        self.declare_parameter("deblur_image_stamp_reference", "midpoint")  # midpoint|start|end
+        self.declare_parameter("deblur_timestamp_source", "pps_disciplined_system_clock")
         self.declare_parameter("deblur_fov_deg", 72.0)
         self.declare_parameter("deblur_strength", 1.0)
         self.declare_parameter("deblur_min_kernel_px", 1.2)
         self.declare_parameter("deblur_max_kernel_px", 31)
         self.declare_parameter("deblur_iterations", 12)
+        self.declare_parameter("deblur_allow_nearest_fallback", False)
+        self.declare_parameter("deblur_max_integration_gap_ms", 25.0)
+        self.declare_parameter("deblur_require_time_reference", True)
+        self.declare_parameter("deblur_max_time_reference_age_ms", 2000.0)
 
         # Preview management
         self.declare_parameter("manage_previews", False)
@@ -1827,35 +1848,274 @@ class CaptureService(Node):
         os.replace(tmp, csv_path)
         return csv_path
 
+    def _deblur_exposure_s(self) -> Tuple[float, int]:
+        exposure_us = int(self.get_parameter("deblur_exposure_time_us").value)
+        if exposure_us <= 0:
+            exposure_ms = max(0.1, _safe_float(self.get_parameter("deblur_exposure_ms").value, 8.0))
+            exposure_us = int(round(exposure_ms * 1000.0))
+        exposure_us = max(100, exposure_us)
+        return float(exposure_us) / 1_000_000.0, exposure_us
+
+    def _deblur_stamp_reference(self) -> str:
+        ref = str(self.get_parameter("deblur_image_stamp_reference").value).strip().lower()
+        if ref not in ("start", "midpoint", "end"):
+            return "midpoint"
+        return ref
+
+    def _deblur_exposure_window_ns(self, stamp_ns: int, exposure_us: int, stamp_ref: str) -> Tuple[int, int]:
+        exposure_ns = max(1, int(exposure_us) * 1000)
+        if stamp_ref == "start":
+            t0_ns = int(stamp_ns)
+            t1_ns = int(stamp_ns + exposure_ns)
+        elif stamp_ref == "end":
+            t0_ns = int(stamp_ns - exposure_ns)
+            t1_ns = int(stamp_ns)
+        else:
+            half_ns = exposure_ns // 2
+            t0_ns = int(stamp_ns - half_ns)
+            t1_ns = int(t0_ns + exposure_ns)
+        if t1_ns <= t0_ns:
+            t1_ns = t0_ns + 1
+        return t0_ns, t1_ns
+
+    def _gyro_samples_snapshot(self) -> List[GyroSample]:
+        with self._sensor_lock:
+            msgs = list(self._buf_imu)
+        if not msgs:
+            return []
+        samples: List[GyroSample] = []
+        for msg in msgs:
+            t_ns = _stamp_to_ns(msg.header.stamp)
+            if t_ns <= 0:
+                continue
+            samples.append(
+                (
+                    int(t_ns),
+                    (
+                        float(msg.angular_velocity.x),
+                        float(msg.angular_velocity.y),
+                        float(msg.angular_velocity.z),
+                    ),
+                )
+            )
+        samples.sort(key=lambda x: x[0])
+        # Collapse duplicate timestamps (keep latest sample for each stamp).
+        dedup: List[GyroSample] = []
+        for t_ns, w in samples:
+            if dedup and dedup[-1][0] == t_ns:
+                dedup[-1] = (t_ns, w)
+            else:
+                dedup.append((t_ns, w))
+        return dedup
+
+    def _interp_gyro_from_sorted(
+        self,
+        samples: List[GyroSample],
+        times: List[int],
+        target_ns: int,
+    ) -> Tuple[Optional[Tuple[float, float, float]], Dict[str, Any]]:
+        idx = bisect_left(times, target_ns)
+        if idx < len(times) and times[idx] == target_ns:
+            return samples[idx][1], {
+                "mode": "exact",
+                "source_stamp": _ns_to_stamp_str(times[idx]),
+            }
+        left = idx - 1
+        right = idx
+        if left < 0 or right >= len(times):
+            return None, {"mode": "out_of_range"}
+        t0_ns, w0 = samples[left]
+        t1_ns, w1 = samples[right]
+        if t1_ns <= t0_ns:
+            return None, {"mode": "degenerate"}
+        alpha = float(target_ns - t0_ns) / float(t1_ns - t0_ns)
+        return _lerp_vec3(w0, w1, alpha), {
+            "mode": "linear",
+            "left_stamp": _ns_to_stamp_str(t0_ns),
+            "right_stamp": _ns_to_stamp_str(t1_ns),
+            "alpha": float(alpha),
+        }
+
+    def _integrate_gyro_interval(self, t0_ns: int, t1_ns: int) -> Dict[str, Any]:
+        out: Dict[str, Any] = {
+            "ok": False,
+            "status": "missing_imu",
+            "gyro_samples_used": 0,
+        }
+        if t1_ns <= t0_ns:
+            out["status"] = "invalid_exposure_interval"
+            return out
+
+        samples = self._gyro_samples_snapshot()
+        out["gyro_buffer_samples"] = int(len(samples))
+        if len(samples) < 2:
+            out["status"] = "not_enough_imu_samples"
+            return out
+
+        times = [s[0] for s in samples]
+        out["gyro_buffer_time_min"] = _ns_to_stamp_str(times[0])
+        out["gyro_buffer_time_max"] = _ns_to_stamp_str(times[-1])
+        if t0_ns < times[0] or t1_ns > times[-1]:
+            out["status"] = "imu_window_outside_buffer"
+            return out
+
+        w0, interp0 = self._interp_gyro_from_sorted(samples, times, t0_ns)
+        w1, interp1 = self._interp_gyro_from_sorted(samples, times, t1_ns)
+        out["interp_start"] = interp0
+        out["interp_end"] = interp1
+        if w0 is None or w1 is None:
+            out["status"] = "imu_boundary_interpolation_failed"
+            return out
+
+        inside_start = bisect_right(times, t0_ns)
+        inside_end = bisect_left(times, t1_ns)
+        integrated_samples: List[GyroSample] = [(t0_ns, w0)]
+        for idx in range(inside_start, inside_end):
+            integrated_samples.append(samples[idx])
+        integrated_samples.append((t1_ns, w1))
+
+        dedup: List[GyroSample] = []
+        for t_ns, w in integrated_samples:
+            if dedup and dedup[-1][0] == t_ns:
+                dedup[-1] = (t_ns, w)
+            else:
+                dedup.append((t_ns, w))
+        if len(dedup) < 2:
+            out["status"] = "not_enough_interval_samples"
+            return out
+
+        dtheta_x = 0.0
+        dtheta_y = 0.0
+        dtheta_z = 0.0
+        max_step_s = 0.0
+        for i in range(1, len(dedup)):
+            t_a, w_a = dedup[i - 1]
+            t_b, w_b = dedup[i]
+            dt_s = float(t_b - t_a) / 1_000_000_000.0
+            if dt_s <= 0.0:
+                continue
+            if dt_s > max_step_s:
+                max_step_s = dt_s
+            dtheta_x += 0.5 * (w_a[0] + w_b[0]) * dt_s
+            dtheta_y += 0.5 * (w_a[1] + w_b[1]) * dt_s
+            dtheta_z += 0.5 * (w_a[2] + w_b[2]) * dt_s
+
+        if max_step_s <= 0.0:
+            out["status"] = "invalid_interval_dt"
+            return out
+
+        max_gap_limit_ms = max(
+            0.0,
+            _safe_float(self.get_parameter("deblur_max_integration_gap_ms").value, 25.0),
+        )
+        max_step_ms = float(max_step_s * 1000.0)
+        out.update(
+            {
+                "ok": True,
+                "status": "ok",
+                "gyro_samples_used": int(len(dedup)),
+                "gyro_samples_inside_exposure": int(max(0, inside_end - inside_start)),
+                "gyro_time_min": _ns_to_stamp_str(dedup[0][0]),
+                "gyro_time_max": _ns_to_stamp_str(dedup[-1][0]),
+                "duration_ms": float((t1_ns - t0_ns) / 1_000_000.0),
+                "max_step_ms": max_step_ms,
+                "max_step_limit_ms": float(max_gap_limit_ms),
+                "max_step_exceeds_limit": bool(max_gap_limit_ms > 0.0 and max_step_ms > max_gap_limit_ms),
+                "delta_theta_rad": [float(dtheta_x), float(dtheta_y), float(dtheta_z)],
+            }
+        )
+        return out
+
     def _estimate_blur_kernel(self, stamp_ns: int, width: int) -> Tuple[float, float, Dict[str, Any]]:
-        imu = self._nearest_imu(stamp_ns)
-        if imu is None:
-            return 0.0, 0.0, {"status": "missing_imu"}
-        exposure_ms = max(0.1, _safe_float(self.get_parameter("deblur_exposure_ms").value, 8.0))
-        exposure_s = exposure_ms / 1000.0
+        exposure_s, exposure_us = self._deblur_exposure_s()
+        stamp_ref = self._deblur_stamp_reference()
+        t0_ns, t1_ns = self._deblur_exposure_window_ns(stamp_ns, exposure_us, stamp_ref)
         fov_deg = _clamp(_safe_float(self.get_parameter("deblur_fov_deg").value, 72.0), 20.0, 179.0)
         strength = max(0.0, _safe_float(self.get_parameter("deblur_strength").value, 1.0))
         focal_px = float(width) / (2.0 * math.tan(math.radians(fov_deg) * 0.5))
+        timestamp_source = str(self.get_parameter("deblur_timestamp_source").value).strip() or "unknown"
+        requested_nearest_fallback = bool(self.get_parameter("deblur_allow_nearest_fallback").value)
+        require_time_ref = bool(self.get_parameter("deblur_require_time_reference").value)
+        max_time_ref_age_ms = max(
+            0.0,
+            _safe_float(self.get_parameter("deblur_max_time_reference_age_ms").value, 2000.0),
+        )
 
-        wx = float(imu.angular_velocity.x)
-        wy = float(imu.angular_velocity.y)
-        wz = float(imu.angular_velocity.z)
-        dx = wy * exposure_s * focal_px * strength
-        dy = wx * exposure_s * focal_px * strength
-        length_px = math.sqrt(dx * dx + dy * dy)
-        max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
-        length_px = _clamp(length_px, 0.0, float(max_kernel))
-        angle_deg = float(math.degrees(math.atan2(dy, dx))) if length_px > 1e-6 else 0.0
-        imu_ns = _stamp_to_ns(imu.header.stamp)
-        diag = {
-            "status": "ok",
-            "imu_stamp": _stamp_to_str(imu.header.stamp),
-            "imu_dt_ms": (imu_ns - stamp_ns) / 1_000_000.0,
-            "imu_angular_velocity": [wx, wy, wz],
-            "exposure_ms": exposure_ms,
-            "fov_deg": fov_deg,
-            "focal_px": focal_px,
+        diag: Dict[str, Any] = {
+            "status": "missing_imu",
+            "timestamp_source": timestamp_source,
+            "image_stamp": _ns_to_stamp_str(stamp_ns),
+            "image_stamp_reference": stamp_ref,
+            "exposure_time_us": int(exposure_us),
+            "exposure_ms": float(exposure_s * 1000.0),
+            "exposure_start": _ns_to_stamp_str(t0_ns),
+            "exposure_end": _ns_to_stamp_str(t1_ns),
+            "fov_deg": float(fov_deg),
+            "focal_px": float(focal_px),
+            "deblur_strength": float(strength),
+            "integration_method": "trapezoidal",
+            "nearest_imu_fallback_policy": "disabled",
+            "require_time_reference": bool(require_time_ref),
+            "max_time_reference_age_ms": float(max_time_ref_age_ms),
         }
+        if requested_nearest_fallback:
+            diag["nearest_imu_fallback_requested"] = True
+
+        if require_time_ref:
+            tr = self._nearest_time_ref(stamp_ns)
+            if tr is None:
+                diag["status"] = "missing_time_reference"
+                return 0.0, 0.0, diag
+            tr_ns = _stamp_to_ns(tr.header.stamp)
+            tr_age_ms = abs(float(tr_ns - stamp_ns) / 1_000_000.0)
+            diag["nearest_time_reference"] = {
+                "stamp": _stamp_to_str(tr.header.stamp),
+                "time_ref": _stamp_to_str(tr.time_ref),
+                "source": tr.source or "",
+                "dt_ms": float((tr_ns - stamp_ns) / 1_000_000.0),
+                "abs_dt_ms": tr_age_ms,
+            }
+            if max_time_ref_age_ms > 0.0 and tr_age_ms > max_time_ref_age_ms:
+                diag["status"] = "stale_time_reference"
+                return 0.0, 0.0, diag
+
+        integration = self._integrate_gyro_interval(t0_ns, t1_ns)
+        dtheta = integration.get("delta_theta_rad", [0.0, 0.0, 0.0])
+        if bool(integration.get("ok")):
+            diag["status"] = "ok"
+            diag["estimation_mode"] = "gyro_interval_integration"
+            diag.update({k: v for k, v in integration.items() if k != "ok"})
+        else:
+            diag["integration_error"] = integration.get("status", "unknown")
+            diag["gyro_samples_used"] = int(integration.get("gyro_samples_used", 0))
+            diag["gyro_buffer_samples"] = int(integration.get("gyro_buffer_samples", 0))
+            diag["interp_start"] = integration.get("interp_start")
+            diag["interp_end"] = integration.get("interp_end")
+            diag["status"] = "missing_imu_interval"
+            return 0.0, 0.0, diag
+
+        dtheta_x = float(dtheta[0]) if len(dtheta) >= 1 else 0.0
+        dtheta_y = float(dtheta[1]) if len(dtheta) >= 2 else 0.0
+        dtheta_z = float(dtheta[2]) if len(dtheta) >= 3 else 0.0
+        dx = float(dtheta_y * focal_px * strength)
+        dy = float(dtheta_x * focal_px * strength)
+        length_raw = math.sqrt(dx * dx + dy * dy)
+        angle_rad = float(math.atan2(dy, dx)) if length_raw > 1e-9 else 0.0
+        angle_deg = float(math.degrees(angle_rad))
+        max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
+        length_px = _clamp(length_raw, 0.0, float(max_kernel))
+
+        diag.update(
+            {
+                "delta_theta_rad": [dtheta_x, dtheta_y, dtheta_z],
+                "blur_dx_px": dx,
+                "blur_dy_px": dy,
+                "blur_length_px": float(length_raw),
+                "blur_angle_rad": angle_rad,
+                "blur_angle_deg": angle_deg,
+                "blur_length_clamped_px": float(length_px),
+            }
+        )
         return float(length_px), angle_deg, diag
 
     def _deblur_capture_image(
@@ -1900,6 +2160,19 @@ class CaptureService(Node):
         info.update(diag)
         info["kernel_length_px"] = float(length_px)
         info["kernel_angle_deg"] = float(angle_deg)
+        info["kernel_angle_rad"] = float(math.radians(angle_deg))
+        info["psf_length_px"] = float(length_px)
+        info["psf_angle_deg"] = float(angle_deg)
+        info["rl_iterations"] = int(max(1, int(self.get_parameter("deblur_iterations").value)))
+        estimator_status = str(diag.get("status", "")).strip().lower()
+        if estimator_status != "ok":
+            try:
+                shutil.copy2(img_path, out_path)
+                status_tag = re.sub(r"[^a-z0-9_]+", "_", estimator_status) or "unavailable"
+                info["status"] = f"copied_{status_tag}"
+            except Exception as e:
+                info["status"] = f"copy_failed: {e}"
+            return info
         min_kernel = max(0.0, _safe_float(self.get_parameter("deblur_min_kernel_px").value, 1.2))
         if length_px < min_kernel:
             try:
@@ -1910,7 +2183,7 @@ class CaptureService(Node):
             return info
 
         max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
-        iterations = max(1, int(self.get_parameter("deblur_iterations").value))
+        iterations = int(info["rl_iterations"])
         psf = _line_psf(length_px, angle_deg, max_kernel=max_kernel)
         try:
             deblurred = _richardson_lucy_bgr(img, psf, iterations=iterations)
@@ -2097,10 +2370,15 @@ class CaptureService(Node):
     ) -> Dict[str, Any]:
         trigger_ns = _stamp_to_ns(trigger_stamp)
         metadata: Dict[str, Any] = {
-            "schema_version": 1,
+            "schema_version": 2,
             "mode": mode,
             "session_id": session,
             "trigger_stamp": _stamp_to_str(trigger_stamp),
+            "time_base": {
+                "image_timestamp_source": str(self.get_parameter("deblur_timestamp_source").value).strip()
+                or "unknown",
+                "image_stamp_reference": self._deblur_stamp_reference(),
+            },
             "cameras": {},
         }
         with self._sensor_lock:
@@ -2118,9 +2396,13 @@ class CaptureService(Node):
         def add_camera(name: str, path: str, stamp: Optional[TimeMsg]) -> None:
             if not path:
                 return
+            exposure_us = self._deblur_exposure_s()[1]
             info: Dict[str, Any] = {
                 "path": path,
                 "stamp": _stamp_to_str(stamp) if stamp is not None else None,
+                "timestamp_source": str(self.get_parameter("deblur_timestamp_source").value).strip() or "unknown",
+                "exposure_time_us": int(exposure_us),
+                "stamp_reference": self._deblur_stamp_reference(),
             }
             deblur_info = deblur_by_cam.get(name)
             if deblur_info is not None:

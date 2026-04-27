@@ -30,6 +30,7 @@ def generate_launch_description():
     imu_frame_id = LaunchConfiguration('imu_frame_id')
     imu_rate_hz = LaunchConfiguration('imu_rate_hz')
     imu_i2c_address = LaunchConfiguration('imu_i2c_address')
+    imu_timestamp_mode = LaunchConfiguration('imu_timestamp_mode')
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
@@ -54,11 +55,18 @@ def generate_launch_description():
     write_trajectory_csv = LaunchConfiguration('write_trajectory_csv')
     enable_motion_deblur = LaunchConfiguration('enable_motion_deblur')
     deblur_exposure_ms = LaunchConfiguration('deblur_exposure_ms')
+    deblur_exposure_time_us = LaunchConfiguration('deblur_exposure_time_us')
+    deblur_image_stamp_reference = LaunchConfiguration('deblur_image_stamp_reference')
+    deblur_timestamp_source = LaunchConfiguration('deblur_timestamp_source')
     deblur_fov_deg = LaunchConfiguration('deblur_fov_deg')
     deblur_strength = LaunchConfiguration('deblur_strength')
     deblur_min_kernel_px = LaunchConfiguration('deblur_min_kernel_px')
     deblur_max_kernel_px = LaunchConfiguration('deblur_max_kernel_px')
     deblur_iterations = LaunchConfiguration('deblur_iterations')
+    deblur_allow_nearest_fallback = LaunchConfiguration('deblur_allow_nearest_fallback')
+    deblur_max_integration_gap_ms = LaunchConfiguration('deblur_max_integration_gap_ms')
+    deblur_require_time_reference = LaunchConfiguration('deblur_require_time_reference')
+    deblur_max_time_reference_age_ms = LaunchConfiguration('deblur_max_time_reference_age_ms')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -81,11 +89,16 @@ def generate_launch_description():
     write_trajectory_csv_bool = ParameterValue(write_trajectory_csv, value_type=bool)
     enable_motion_deblur_bool = ParameterValue(enable_motion_deblur, value_type=bool)
     deblur_exposure_ms_float = ParameterValue(deblur_exposure_ms, value_type=float)
+    deblur_exposure_time_us_int = ParameterValue(deblur_exposure_time_us, value_type=int)
     deblur_fov_deg_float = ParameterValue(deblur_fov_deg, value_type=float)
     deblur_strength_float = ParameterValue(deblur_strength, value_type=float)
     deblur_min_kernel_px_float = ParameterValue(deblur_min_kernel_px, value_type=float)
     deblur_max_kernel_px_int = ParameterValue(deblur_max_kernel_px, value_type=int)
     deblur_iterations_int = ParameterValue(deblur_iterations, value_type=int)
+    deblur_allow_nearest_fallback_bool = ParameterValue(deblur_allow_nearest_fallback, value_type=bool)
+    deblur_max_integration_gap_ms_float = ParameterValue(deblur_max_integration_gap_ms, value_type=float)
+    deblur_require_time_reference_bool = ParameterValue(deblur_require_time_reference, value_type=bool)
+    deblur_max_time_reference_age_ms_float = ParameterValue(deblur_max_time_reference_age_ms, value_type=float)
 
     # Only start standalone camera_ros nodes if manage_previews:=false.
     cam_condition_no_respawn = IfCondition(
@@ -247,6 +260,7 @@ def generate_launch_description():
             'frame_id': imu_frame_id,
             'rate_hz': imu_rate_hz_float,
             'i2c_address': imu_i2c_address_int,
+            'timestamp_mode': imu_timestamp_mode,
         }],
         condition=IfCondition(start_imu_node),
     )
@@ -289,11 +303,18 @@ def generate_launch_description():
             'write_trajectory_csv': write_trajectory_csv_bool,
             'enable_motion_deblur': enable_motion_deblur_bool,
             'deblur_exposure_ms': deblur_exposure_ms_float,
+            'deblur_exposure_time_us': deblur_exposure_time_us_int,
+            'deblur_image_stamp_reference': deblur_image_stamp_reference,
+            'deblur_timestamp_source': deblur_timestamp_source,
             'deblur_fov_deg': deblur_fov_deg_float,
             'deblur_strength': deblur_strength_float,
             'deblur_min_kernel_px': deblur_min_kernel_px_float,
             'deblur_max_kernel_px': deblur_max_kernel_px_int,
             'deblur_iterations': deblur_iterations_int,
+            'deblur_allow_nearest_fallback': deblur_allow_nearest_fallback_bool,
+            'deblur_max_integration_gap_ms': deblur_max_integration_gap_ms_float,
+            'deblur_require_time_reference': deblur_require_time_reference_bool,
+            'deblur_max_time_reference_age_ms': deblur_max_time_reference_age_ms_float,
             'capture_event_topic': '/capture/events',
             'capture_debug_topic': capture_debug_topic,
             'gnss_fix_topic': '/fix',
@@ -384,6 +405,7 @@ def generate_launch_description():
         DeclareLaunchArgument('imu_frame_id', default_value='imu_link'),
         DeclareLaunchArgument('imu_rate_hz', default_value='100.0'),
         DeclareLaunchArgument('imu_i2c_address', default_value='74'),
+        DeclareLaunchArgument('imu_timestamp_mode', default_value='read_end'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),
@@ -408,11 +430,18 @@ def generate_launch_description():
         DeclareLaunchArgument('write_trajectory_csv', default_value='true'),
         DeclareLaunchArgument('enable_motion_deblur', default_value='true'),
         DeclareLaunchArgument('deblur_exposure_ms', default_value='8.0'),
+        DeclareLaunchArgument('deblur_exposure_time_us', default_value='0'),
+        DeclareLaunchArgument('deblur_image_stamp_reference', default_value='midpoint'),
+        DeclareLaunchArgument('deblur_timestamp_source', default_value='pps_disciplined_system_clock'),
         DeclareLaunchArgument('deblur_fov_deg', default_value='72.0'),
         DeclareLaunchArgument('deblur_strength', default_value='1.0'),
         DeclareLaunchArgument('deblur_min_kernel_px', default_value='1.2'),
         DeclareLaunchArgument('deblur_max_kernel_px', default_value='31'),
         DeclareLaunchArgument('deblur_iterations', default_value='12'),
+        DeclareLaunchArgument('deblur_allow_nearest_fallback', default_value='false'),
+        DeclareLaunchArgument('deblur_max_integration_gap_ms', default_value='25.0'),
+        DeclareLaunchArgument('deblur_require_time_reference', default_value='true'),
+        DeclareLaunchArgument('deblur_max_time_reference_age_ms', default_value='2000.0'),
 
         *env_actions,
 

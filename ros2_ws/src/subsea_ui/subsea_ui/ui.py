@@ -1481,8 +1481,10 @@ class MainWindow(QWidget):
             return
 
         os.makedirs(self._session_root_dir(), exist_ok=True)
-        session_id = datetime.now().strftime("sess_%Y%m%d_%H%M%S")
-        session_dir = os.path.join(self._session_root_dir(), session_id)
+        now = datetime.now()
+        session_id = now.strftime("sess_%Y%m%d_%H%M%S")
+        session_day_dir = now.strftime("%Y/%m/%d")
+        session_dir = os.path.join(self._session_root_dir(), session_day_dir, session_id)
         bag_dir = os.path.join(session_dir, "bag")
         os.makedirs(session_dir, exist_ok=True)
 
@@ -1918,7 +1920,7 @@ class MainWindow(QWidget):
             fresh_bits.append(f"imu={imu_age_ms:.0f} ms")
         self.gnss_freshness.setText("Data freshness: " + " | ".join(fresh_bits))
 
-        # Quick visual health score for field usage.
+        # GNSS-only quality score (do not mix IMU state into this bar).
         score = 0
         if lock_state == "locked":
             score += 40
@@ -1929,11 +1931,6 @@ class MainWindow(QWidget):
                 score += 15
             elif fix_age_ms <= float(self._max_fix_age_ms_for_lock):
                 score += 8
-        if imu_age_ms is not None:
-            if imu_age_ms <= 200.0:
-                score += 10
-            elif imu_age_ms <= 1000.0:
-                score += 5
         try:
             if fix is not None:
                 cov = fix.position_covariance

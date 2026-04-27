@@ -1,3 +1,4 @@
 {
-  "cmake.sourceDirectory": "/Users/havard/Documents/repos/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_capture"
+  "cmake.sourceDirectory": "/Users/havard/Documents/repos/trajectory-calculation-3d-scanner/ros2_ws/src/subsea_capture",
+  "cmake.ignoreCMakeListsMissing": true
 }

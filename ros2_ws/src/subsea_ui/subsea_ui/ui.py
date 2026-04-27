@@ -1608,9 +1608,6 @@ class MainWindow(QWidget):
 
         for ev in events:
             source = str(ev.get("source", "")).strip().lower()
-            if source != "gpio":
-                continue
-
             session = str(ev.get("session_id", ""))
             try:
                 sec = int(ev.get("stamp_sec", 0))
@@ -1630,12 +1627,25 @@ class MainWindow(QWidget):
             message = str(ev.get("message", ""))
             cam0_path = str(ev.get("cam0_path", ""))
             cam1_path = str(ev.get("cam1_path", ""))
+            meta_path = str(ev.get("meta_path", ""))
+            cam0_deblur_path = str(ev.get("cam0_deblur_path", ""))
+            cam1_deblur_path = str(ev.get("cam1_deblur_path", ""))
+            traj_csv_path = str(ev.get("trajectory_csv_path", ""))
+            if meta_path and (not cam0_deblur_path or not cam1_deblur_path):
+                m0, m1 = self._deblur_paths_from_meta(meta_path)
+                cam0_deblur_path = cam0_deblur_path or m0
+                cam1_deblur_path = cam1_deblur_path or m1
+            source_label = source.upper() if source else "CAPTURE"
 
             if success:
-                self.status.setText("Status: GPIO capture OK")
-                self._log(f"GPIO capture OK: session={session} cam0={cam0_path} cam1={cam1_path}")
+                self.status.setText(f"Status: {source_label} capture OK")
+                self._log(
+                    f"{source_label} capture OK: session={session} "
+                    f"cam0={cam0_path} cam1={cam1_path} "
+                    f"cam0_deblur={cam0_deblur_path} cam1_deblur={cam1_deblur_path}"
+                )
                 self._append_capture_log(
-                    source="gpio",
+                    source=source or "capture",
                     session=session,
                     success=True,
                     message=message,
@@ -1646,26 +1656,30 @@ class MainWindow(QWidget):
                 )
                 self._cap0_pix = load_jpeg_as_pix(cam0_path)
                 self._cap1_pix = load_jpeg_as_pix(cam1_path)
-                self._res0_pix = self._cap0_pix
-                self._res1_pix = self._cap1_pix
+                self._res0_pix = load_jpeg_as_pix(cam0_deblur_path) or self._cap0_pix
+                self._res1_pix = load_jpeg_as_pix(cam1_deblur_path) or self._cap1_pix
                 self._apply_capture_pixmaps()
                 self.capture_details.setPlainText(
                     "\n".join(
                         [
-                            f"source: gpio",
+                            f"source: {source or 'capture'}",
                             f"session: {session}",
                             f"stamp: {sec}.{nsec:09d}",
                             f"cam0:  {cam0_path}",
                             f"cam1:  {cam1_path}",
+                            f"cam0_deblur: {cam0_deblur_path or '(none)'}",
+                            f"cam1_deblur: {cam1_deblur_path or '(none)'}",
+                            f"metadata: {meta_path or '(none)'}",
+                            f"trajectory_csv: {traj_csv_path or '(none)'}",
                             f"msg:   {message}",
                         ]
                     )
                 )
             else:
-                self.status.setText("Status: GPIO capture FAILED (see details)")
-                self._log(f"GPIO capture failed: session={session} msg={message}")
+                self.status.setText(f"Status: {source_label} capture FAILED (see details)")
+                self._log(f"{source_label} capture failed: session={session} msg={message}")
                 self._append_capture_log(
-                    source="gpio",
+                    source=source or "capture",
                     session=session,
                     success=False,
                     message=message,
@@ -1679,9 +1693,11 @@ class MainWindow(QWidget):
                 self.capture_details.setPlainText(
                     "\n".join(
                         [
-                            f"source: gpio",
+                            f"source: {source or 'capture'}",
                             f"session: {session}",
                             f"stamp: {sec}.{nsec:09d}",
+                            f"metadata: {meta_path or '(none)'}",
+                            f"trajectory_csv: {traj_csv_path or '(none)'}",
                             "",
                             message,
                         ]
@@ -1708,6 +1724,21 @@ class MainWindow(QWidget):
             f"msg={message}\n"
         )
         self.capture_log.appendPlainText(summary)
+
+    def _deblur_paths_from_meta(self, meta_path: str) -> Tuple[str, str]:
+        if not meta_path:
+            return "", ""
+        if not os.path.exists(meta_path):
+            return "", ""
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+            cams = payload.get("cameras", {})
+            cam0 = (((cams.get("cam0") or {}).get("deblur") or {}).get("path") or "").strip()
+            cam1 = (((cams.get("cam1") or {}).get("deblur") or {}).get("path") or "").strip()
+            return cam0, cam1
+        except Exception:
+            return "", ""
 
     def _consume_capture_debug_events(self) -> None:
         events = self.ros_node.pop_capture_debug_events()

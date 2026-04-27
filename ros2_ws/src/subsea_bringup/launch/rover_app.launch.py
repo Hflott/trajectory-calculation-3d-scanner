@@ -44,6 +44,16 @@ def generate_launch_description():
     odom_local_topic = LaunchConfiguration('odom_local_topic')
     odom_global_topic = LaunchConfiguration('odom_global_topic')
     capture_debug_topic = LaunchConfiguration('capture_debug_topic')
+    trajectory_sample_rate_hz = LaunchConfiguration('trajectory_sample_rate_hz')
+    trajectory_window_ms = LaunchConfiguration('trajectory_window_ms')
+    write_trajectory_csv = LaunchConfiguration('write_trajectory_csv')
+    enable_motion_deblur = LaunchConfiguration('enable_motion_deblur')
+    deblur_exposure_ms = LaunchConfiguration('deblur_exposure_ms')
+    deblur_fov_deg = LaunchConfiguration('deblur_fov_deg')
+    deblur_strength = LaunchConfiguration('deblur_strength')
+    deblur_min_kernel_px = LaunchConfiguration('deblur_min_kernel_px')
+    deblur_max_kernel_px = LaunchConfiguration('deblur_max_kernel_px')
+    deblur_iterations = LaunchConfiguration('deblur_iterations')
 
     # Convert LaunchConfiguration "true/false" strings to bool params
     start_cameras_bool = ParameterValue(start_cameras, value_type=bool)
@@ -59,6 +69,16 @@ def generate_launch_description():
     preview_ui_h_int = ParameterValue(preview_ui_height, value_type=int)
     preview_ui_fps_int = ParameterValue(preview_ui_fps, value_type=int)
     ui_fps_int = ParameterValue(ui_fps, value_type=int)
+    trajectory_sample_rate_hz_float = ParameterValue(trajectory_sample_rate_hz, value_type=float)
+    trajectory_window_ms_float = ParameterValue(trajectory_window_ms, value_type=float)
+    write_trajectory_csv_bool = ParameterValue(write_trajectory_csv, value_type=bool)
+    enable_motion_deblur_bool = ParameterValue(enable_motion_deblur, value_type=bool)
+    deblur_exposure_ms_float = ParameterValue(deblur_exposure_ms, value_type=float)
+    deblur_fov_deg_float = ParameterValue(deblur_fov_deg, value_type=float)
+    deblur_strength_float = ParameterValue(deblur_strength, value_type=float)
+    deblur_min_kernel_px_float = ParameterValue(deblur_min_kernel_px, value_type=float)
+    deblur_max_kernel_px_int = ParameterValue(deblur_max_kernel_px, value_type=int)
+    deblur_iterations_int = ParameterValue(deblur_iterations, value_type=int)
 
     # Only start standalone camera_ros nodes if manage_previews:=false.
     cam_condition_no_respawn = IfCondition(
@@ -243,6 +263,16 @@ def generate_launch_description():
             'stream_pair_max_delta_ms': 80.0,
             'write_capture_metadata': True,
             'sensor_buffer_s': 20.0,
+            'trajectory_sample_rate_hz': trajectory_sample_rate_hz_float,
+            'trajectory_window_ms': trajectory_window_ms_float,
+            'write_trajectory_csv': write_trajectory_csv_bool,
+            'enable_motion_deblur': enable_motion_deblur_bool,
+            'deblur_exposure_ms': deblur_exposure_ms_float,
+            'deblur_fov_deg': deblur_fov_deg_float,
+            'deblur_strength': deblur_strength_float,
+            'deblur_min_kernel_px': deblur_min_kernel_px_float,
+            'deblur_max_kernel_px': deblur_max_kernel_px_int,
+            'deblur_iterations': deblur_iterations_int,
             'capture_event_topic': '/capture/events',
             'capture_debug_topic': capture_debug_topic,
             'gnss_fix_topic': '/fix',
@@ -347,6 +377,16 @@ def generate_launch_description():
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
         DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),
         DeclareLaunchArgument('capture_debug_topic', default_value='/capture/debug'),
+        DeclareLaunchArgument('trajectory_sample_rate_hz', default_value='100.0'),
+        DeclareLaunchArgument('trajectory_window_ms', default_value='1000.0'),
+        DeclareLaunchArgument('write_trajectory_csv', default_value='true'),
+        DeclareLaunchArgument('enable_motion_deblur', default_value='true'),
+        DeclareLaunchArgument('deblur_exposure_ms', default_value='8.0'),
+        DeclareLaunchArgument('deblur_fov_deg', default_value='72.0'),
+        DeclareLaunchArgument('deblur_strength', default_value='1.0'),
+        DeclareLaunchArgument('deblur_min_kernel_px', default_value='1.2'),
+        DeclareLaunchArgument('deblur_max_kernel_px', default_value='31'),
+        DeclareLaunchArgument('deblur_iterations', default_value='12'),
 
         *env_actions,
 

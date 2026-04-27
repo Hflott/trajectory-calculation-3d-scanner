@@ -1,7 +1,7 @@
 ekf_global:
   ros__parameters:
-    frequency: 30.0
-    sensor_timeout: 0.25
+    frequency: 100.0
+    sensor_timeout: 0.08
     two_d_mode: false
     transform_time_offset: 0.0
     transform_timeout: 0.0

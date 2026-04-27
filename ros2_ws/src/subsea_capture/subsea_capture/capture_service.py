@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
+import csv
 import json
+import math
 import os
 import re
+import shutil
 import time
 import subprocess
 import signal
@@ -210,6 +213,105 @@ def _stamp_to_str(stamp: TimeMsg) -> str:
     return f"{int(stamp.sec)}.{int(stamp.nanosec):09d}"
 
 
+def _ns_to_stamp_str(ns: int) -> str:
+    sec = int(ns // 1_000_000_000)
+    nsec = int(ns % 1_000_000_000)
+    return f"{sec}.{nsec:09d}"
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def _safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
+def _quat_norm(q: List[float]) -> List[float]:
+    n = math.sqrt(sum(x * x for x in q))
+    if n <= 1e-12:
+        return [0.0, 0.0, 0.0, 1.0]
+    inv = 1.0 / n
+    return [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv]
+
+
+def _quat_slerp(q0: List[float], q1: List[float], t: float) -> List[float]:
+    t = _clamp(float(t), 0.0, 1.0)
+    a = _quat_norm(q0)
+    b = _quat_norm(q1)
+    dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
+    if dot < 0.0:
+        b = [-b[0], -b[1], -b[2], -b[3]]
+        dot = -dot
+    if dot > 0.9995:
+        out = [a[i] + t * (b[i] - a[i]) for i in range(4)]
+        return _quat_norm(out)
+    theta_0 = math.acos(_clamp(dot, -1.0, 1.0))
+    sin_theta_0 = math.sin(theta_0)
+    if abs(sin_theta_0) < 1e-8:
+        return a
+    theta = theta_0 * t
+    sin_theta = math.sin(theta)
+    s0 = math.cos(theta) - dot * sin_theta / sin_theta_0
+    s1 = sin_theta / sin_theta_0
+    return [
+        s0 * a[0] + s1 * b[0],
+        s0 * a[1] + s1 * b[1],
+        s0 * a[2] + s1 * b[2],
+        s0 * a[3] + s1 * b[3],
+    ]
+
+
+def _line_psf(length_px: float, angle_deg: float, max_kernel: int) -> np.ndarray:
+    l = int(max(1, round(float(length_px))))
+    max_kernel = max(3, int(max_kernel))
+    if max_kernel % 2 == 0:
+        max_kernel += 1
+    base = max(3, l * 2 + 1)
+    k = min(base, max_kernel)
+    if k % 2 == 0:
+        k += 1
+    psf = np.zeros((k, k), dtype=np.float32)
+    c = k // 2
+    ang = math.radians(float(angle_deg))
+    dx = int(round((l - 1) * 0.5 * math.cos(ang)))
+    dy = int(round((l - 1) * 0.5 * math.sin(ang)))
+    x0 = int(_clamp(c - dx, 0, k - 1))
+    y0 = int(_clamp(c - dy, 0, k - 1))
+    x1 = int(_clamp(c + dx, 0, k - 1))
+    y1 = int(_clamp(c + dy, 0, k - 1))
+    cv2.line(psf, (x0, y0), (x1, y1), 1.0, 1)
+    s = float(psf.sum())
+    if s <= 1e-9:
+        psf[c, c] = 1.0
+        s = 1.0
+    psf /= s
+    return psf
+
+
+def _richardson_lucy_bgr(
+    img_bgr: np.ndarray,
+    psf: np.ndarray,
+    iterations: int,
+) -> np.ndarray:
+    iters = max(1, int(iterations))
+    img = img_bgr.astype(np.float32) / 255.0
+    est = np.clip(img, 1e-4, 1.0)
+    ker = psf.astype(np.float32)
+    ker /= max(1e-9, float(ker.sum()))
+    ker_flip = cv2.flip(ker, -1)
+    eps = 1e-6
+    for _ in range(iters):
+        conv = cv2.filter2D(est, -1, ker, borderType=cv2.BORDER_REPLICATE)
+        rel = img / np.maximum(conv, eps)
+        est *= cv2.filter2D(rel, -1, ker_flip, borderType=cv2.BORDER_REPLICATE)
+        est = np.clip(est, 0.0, 1.0)
+    return np.clip(est * 255.0, 0.0, 255.0).astype(np.uint8)
+
+
 class CaptureService(Node):
     def __init__(self):
         super().__init__("capture_service")
@@ -231,6 +333,16 @@ class CaptureService(Node):
         self.declare_parameter("stream_pair_max_delta_ms", 80.0)
         self.declare_parameter("write_capture_metadata", True)
         self.declare_parameter("sensor_buffer_s", 20.0)
+        self.declare_parameter("trajectory_sample_rate_hz", 100.0)
+        self.declare_parameter("trajectory_window_ms", 1000.0)
+        self.declare_parameter("write_trajectory_csv", True)
+        self.declare_parameter("enable_motion_deblur", True)
+        self.declare_parameter("deblur_exposure_ms", 8.0)
+        self.declare_parameter("deblur_fov_deg", 72.0)
+        self.declare_parameter("deblur_strength", 1.0)
+        self.declare_parameter("deblur_min_kernel_px", 1.2)
+        self.declare_parameter("deblur_max_kernel_px", 31)
+        self.declare_parameter("deblur_iterations", 12)
 
         # Preview management
         self.declare_parameter("manage_previews", False)
@@ -1147,6 +1259,22 @@ class CaptureService(Node):
         else:
             self.get_logger().error(f"GPIO capture failed: {message}")
 
+    def _message_kv(self, message: str) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        txt = str(message or "")
+        if not txt:
+            return out
+        parts = [p.strip() for p in txt.split(";")]
+        for part in parts:
+            if "=" not in part:
+                continue
+            k, v = part.split("=", 1)
+            key = k.strip().lower()
+            if not key:
+                continue
+            out[key] = v.strip()
+        return out
+
     def _publish_capture_event(
         self,
         source: str,
@@ -1167,6 +1295,36 @@ class CaptureService(Node):
             "stamp_sec": int(stamp.sec),
             "stamp_nanosec": int(stamp.nanosec),
         }
+        kv = self._message_kv(message)
+        if "metadata" in kv:
+            payload["meta_path"] = kv["metadata"]
+        if "cam0_deblur" in kv:
+            payload["cam0_deblur_path"] = kv["cam0_deblur"]
+        if "cam1_deblur" in kv:
+            payload["cam1_deblur_path"] = kv["cam1_deblur"]
+        if "trajectory_csv" in kv:
+            payload["trajectory_csv_path"] = kv["trajectory_csv"]
+
+        meta_path = str(payload.get("meta_path", "")).strip()
+        if meta_path and os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                cams = meta.get("cameras", {})
+                if "cam0_deblur_path" not in payload:
+                    d0 = (((cams.get("cam0") or {}).get("deblur") or {}).get("path") or "").strip()
+                    if d0:
+                        payload["cam0_deblur_path"] = d0
+                if "cam1_deblur_path" not in payload:
+                    d1 = (((cams.get("cam1") or {}).get("deblur") or {}).get("path") or "").strip()
+                    if d1:
+                        payload["cam1_deblur_path"] = d1
+                if "trajectory_csv_path" not in payload:
+                    tcsv = str(meta.get("trajectory_csv", "") or "").strip()
+                    if tcsv:
+                        payload["trajectory_csv_path"] = tcsv
+            except Exception:
+                pass
         try:
             msg = String()
             msg.data = json.dumps(payload, separators=(",", ":"))
@@ -1373,6 +1531,401 @@ class CaptureService(Node):
         except Exception as e:
             return False, str(e)
 
+    def _nearest_from_msgs(
+        self,
+        msgs: List[Any],
+        stamp_ns: int,
+        stamp_getter: Callable[[Any], int],
+    ) -> Optional[Any]:
+        if not msgs:
+            return None
+        return min(msgs, key=lambda m: abs(stamp_getter(m) - stamp_ns))
+
+    def _odom_interpolated_state(
+        self,
+        o0: Odometry,
+        o1: Odometry,
+        target_ns: int,
+        alpha: float,
+    ) -> Dict[str, Any]:
+        alpha = _clamp(alpha, 0.0, 1.0)
+        p0 = o0.pose.pose.position
+        p1 = o1.pose.pose.position
+        q0 = [
+            float(o0.pose.pose.orientation.x),
+            float(o0.pose.pose.orientation.y),
+            float(o0.pose.pose.orientation.z),
+            float(o0.pose.pose.orientation.w),
+        ]
+        q1 = [
+            float(o1.pose.pose.orientation.x),
+            float(o1.pose.pose.orientation.y),
+            float(o1.pose.pose.orientation.z),
+            float(o1.pose.pose.orientation.w),
+        ]
+        v0 = o0.twist.twist.linear
+        v1 = o1.twist.twist.linear
+        w0 = o0.twist.twist.angular
+        w1 = o1.twist.twist.angular
+        q = _quat_slerp(q0, q1, alpha)
+        pos = [
+            float(p0.x + (p1.x - p0.x) * alpha),
+            float(p0.y + (p1.y - p0.y) * alpha),
+            float(p0.z + (p1.z - p0.z) * alpha),
+        ]
+        lin = [
+            float(v0.x + (v1.x - v0.x) * alpha),
+            float(v0.y + (v1.y - v0.y) * alpha),
+            float(v0.z + (v1.z - v0.z) * alpha),
+        ]
+        ang = [
+            float(w0.x + (w1.x - w0.x) * alpha),
+            float(w0.y + (w1.y - w0.y) * alpha),
+            float(w0.z + (w1.z - w0.z) * alpha),
+        ]
+        t0_ns = _stamp_to_ns(o0.header.stamp)
+        t1_ns = _stamp_to_ns(o1.header.stamp)
+        return {
+            "stamp": _ns_to_stamp_str(target_ns),
+            "source_stamp0": _stamp_to_str(o0.header.stamp),
+            "source_stamp1": _stamp_to_str(o1.header.stamp),
+            "source_dt_ms": (t1_ns - t0_ns) / 1_000_000.0,
+            "interpolated": bool(t0_ns != t1_ns and o0 is not o1),
+            "frame_id": o0.header.frame_id or "",
+            "child_frame_id": o0.child_frame_id or "",
+            "position": pos,
+            "orientation_xyzw": [float(q[0]), float(q[1]), float(q[2]), float(q[3])],
+            "linear_velocity": lin,
+            "angular_velocity": ang,
+            "speed_mps": math.sqrt(lin[0] * lin[0] + lin[1] * lin[1] + lin[2] * lin[2]),
+        }
+
+    def _interp_odometry_at(self, msgs: List[Odometry], stamp_ns: int) -> Optional[Dict[str, Any]]:
+        if not msgs:
+            return None
+        if len(msgs) == 1:
+            o = msgs[0]
+            out = self._odom_interpolated_state(o, o, stamp_ns, 0.0)
+            out["nearest_dt_ms"] = (_stamp_to_ns(o.header.stamp) - stamp_ns) / 1_000_000.0
+            return out
+
+        first = msgs[0]
+        last = msgs[-1]
+        first_ns = _stamp_to_ns(first.header.stamp)
+        last_ns = _stamp_to_ns(last.header.stamp)
+        if stamp_ns <= first_ns:
+            out = self._odom_interpolated_state(first, first, stamp_ns, 0.0)
+            out["nearest_dt_ms"] = (first_ns - stamp_ns) / 1_000_000.0
+            return out
+        if stamp_ns >= last_ns:
+            out = self._odom_interpolated_state(last, last, stamp_ns, 0.0)
+            out["nearest_dt_ms"] = (last_ns - stamp_ns) / 1_000_000.0
+            return out
+
+        for i in range(1, len(msgs)):
+            o0 = msgs[i - 1]
+            o1 = msgs[i]
+            t0 = _stamp_to_ns(o0.header.stamp)
+            t1 = _stamp_to_ns(o1.header.stamp)
+            if stamp_ns < t0 or stamp_ns > t1:
+                continue
+            if t1 <= t0:
+                out = self._odom_interpolated_state(o0, o0, stamp_ns, 0.0)
+                out["nearest_dt_ms"] = (t0 - stamp_ns) / 1_000_000.0
+                return out
+            alpha = (stamp_ns - t0) / float(t1 - t0)
+            out = self._odom_interpolated_state(o0, o1, stamp_ns, alpha)
+            out["nearest_dt_ms"] = min(abs(stamp_ns - t0), abs(t1 - stamp_ns)) / 1_000_000.0
+            return out
+        return None
+
+    def _trajectory_bundle(self, center_ns: int) -> Dict[str, Any]:
+        rate_hz = max(1.0, _safe_float(self.get_parameter("trajectory_sample_rate_hz").value, 100.0))
+        window_ms = max(0.0, _safe_float(self.get_parameter("trajectory_window_ms").value, 1000.0))
+        if window_ms <= 0.0:
+            return {
+                "enabled": False,
+                "reason": "trajectory_window_ms <= 0",
+                "sample_rate_hz": rate_hz,
+                "window_ms": window_ms,
+                "samples": [],
+            }
+
+        with self._sensor_lock:
+            odom_global_msgs = list(self._buf_odom_global)
+            odom_local_msgs = list(self._buf_odom_local)
+            imu_msgs = list(self._buf_imu)
+        odom_global_msgs.sort(key=lambda m: _stamp_to_ns(m.header.stamp))
+        odom_local_msgs.sort(key=lambda m: _stamp_to_ns(m.header.stamp))
+        imu_msgs.sort(key=lambda m: _stamp_to_ns(m.header.stamp))
+
+        source_name = ""
+        src_msgs: List[Odometry] = []
+        if len(odom_global_msgs) >= 2:
+            source_name = "odom_global"
+            src_msgs = odom_global_msgs
+        elif len(odom_local_msgs) >= 2:
+            source_name = "odom_local"
+            src_msgs = odom_local_msgs
+        elif odom_global_msgs:
+            source_name = "odom_global_single"
+            src_msgs = odom_global_msgs
+        elif odom_local_msgs:
+            source_name = "odom_local_single"
+            src_msgs = odom_local_msgs
+        else:
+            return {
+                "enabled": False,
+                "reason": "no odometry samples",
+                "sample_rate_hz": rate_hz,
+                "window_ms": window_ms,
+                "samples": [],
+            }
+
+        half_ns = int(window_ms * 500_000.0)
+        start_ns = center_ns - half_ns
+        end_ns = center_ns + half_ns
+        if end_ns < start_ns:
+            end_ns = start_ns
+        step_ns = max(1, int(round(1_000_000_000.0 / rate_hz)))
+        span_ns = max(0, end_ns - start_ns)
+        max_samples = 600
+        est_samples = int(span_ns // step_ns) + 1
+        if est_samples > max_samples:
+            step_ns = max(1, int(math.ceil(span_ns / float(max_samples - 1))))
+
+        samples: List[Dict[str, Any]] = []
+        ns = start_ns
+        while ns <= end_ns:
+            pose = self._interp_odometry_at(src_msgs, ns)
+            if pose is not None:
+                sample: Dict[str, Any] = {
+                    "stamp": _ns_to_stamp_str(ns),
+                    "offset_from_center_ms": (ns - center_ns) / 1_000_000.0,
+                    "position": pose["position"],
+                    "orientation_xyzw": pose["orientation_xyzw"],
+                    "linear_velocity": pose["linear_velocity"],
+                    "angular_velocity": pose["angular_velocity"],
+                    "speed_mps": pose["speed_mps"],
+                    "nearest_odom_dt_ms": pose.get("nearest_dt_ms"),
+                }
+                imu = self._nearest_from_msgs(
+                    imu_msgs,
+                    ns,
+                    lambda m: _stamp_to_ns(m.header.stamp),
+                )
+                if imu is not None:
+                    imu_ns = _stamp_to_ns(imu.header.stamp)
+                    sample["imu_dt_ms"] = (imu_ns - ns) / 1_000_000.0
+                    sample["imu_angular_velocity"] = [
+                        float(imu.angular_velocity.x),
+                        float(imu.angular_velocity.y),
+                        float(imu.angular_velocity.z),
+                    ]
+                    sample["imu_linear_acceleration"] = [
+                        float(imu.linear_acceleration.x),
+                        float(imu.linear_acceleration.y),
+                        float(imu.linear_acceleration.z),
+                    ]
+                samples.append(sample)
+            ns += step_ns
+        if samples and samples[-1]["stamp"] != _ns_to_stamp_str(end_ns):
+            pose = self._interp_odometry_at(src_msgs, end_ns)
+            if pose is not None:
+                samples.append(
+                    {
+                        "stamp": _ns_to_stamp_str(end_ns),
+                        "offset_from_center_ms": (end_ns - center_ns) / 1_000_000.0,
+                        "position": pose["position"],
+                        "orientation_xyzw": pose["orientation_xyzw"],
+                        "linear_velocity": pose["linear_velocity"],
+                        "angular_velocity": pose["angular_velocity"],
+                        "speed_mps": pose["speed_mps"],
+                        "nearest_odom_dt_ms": pose.get("nearest_dt_ms"),
+                    }
+                )
+        return {
+            "enabled": True,
+            "source": source_name,
+            "sample_rate_hz": float(rate_hz),
+            "window_ms": float(window_ms),
+            "step_ms": float(step_ns) / 1_000_000.0,
+            "samples": samples,
+        }
+
+    def _write_trajectory_csv(self, out_dir: str, session: str, traj: Dict[str, Any]) -> str:
+        samples = traj.get("samples", [])
+        if not isinstance(samples, list) or not samples:
+            return ""
+        csv_path = os.path.join(out_dir, f"{session}_trajectory.csv")
+        tmp = csv_path + ".tmp"
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            wr = csv.writer(f)
+            wr.writerow(
+                [
+                    "stamp",
+                    "offset_from_center_ms",
+                    "px",
+                    "py",
+                    "pz",
+                    "qx",
+                    "qy",
+                    "qz",
+                    "qw",
+                    "vx",
+                    "vy",
+                    "vz",
+                    "speed_mps",
+                    "wx",
+                    "wy",
+                    "wz",
+                    "imu_ax",
+                    "imu_ay",
+                    "imu_az",
+                    "imu_wx",
+                    "imu_wy",
+                    "imu_wz",
+                    "imu_dt_ms",
+                    "nearest_odom_dt_ms",
+                ]
+            )
+            for s in samples:
+                pos = s.get("position", [None, None, None])
+                ori = s.get("orientation_xyzw", [None, None, None, None])
+                lv = s.get("linear_velocity", [None, None, None])
+                av = s.get("angular_velocity", [None, None, None])
+                imu_a = s.get("imu_linear_acceleration", [None, None, None])
+                imu_w = s.get("imu_angular_velocity", [None, None, None])
+                wr.writerow(
+                    [
+                        s.get("stamp"),
+                        s.get("offset_from_center_ms"),
+                        pos[0],
+                        pos[1],
+                        pos[2],
+                        ori[0],
+                        ori[1],
+                        ori[2],
+                        ori[3],
+                        lv[0],
+                        lv[1],
+                        lv[2],
+                        s.get("speed_mps"),
+                        av[0],
+                        av[1],
+                        av[2],
+                        imu_a[0],
+                        imu_a[1],
+                        imu_a[2],
+                        imu_w[0],
+                        imu_w[1],
+                        imu_w[2],
+                        s.get("imu_dt_ms"),
+                        s.get("nearest_odom_dt_ms"),
+                    ]
+                )
+        os.replace(tmp, csv_path)
+        return csv_path
+
+    def _estimate_blur_kernel(self, stamp_ns: int, width: int) -> Tuple[float, float, Dict[str, Any]]:
+        imu = self._nearest_imu(stamp_ns)
+        if imu is None:
+            return 0.0, 0.0, {"status": "missing_imu"}
+        exposure_ms = max(0.1, _safe_float(self.get_parameter("deblur_exposure_ms").value, 8.0))
+        exposure_s = exposure_ms / 1000.0
+        fov_deg = _clamp(_safe_float(self.get_parameter("deblur_fov_deg").value, 72.0), 20.0, 179.0)
+        strength = max(0.0, _safe_float(self.get_parameter("deblur_strength").value, 1.0))
+        focal_px = float(width) / (2.0 * math.tan(math.radians(fov_deg) * 0.5))
+
+        wx = float(imu.angular_velocity.x)
+        wy = float(imu.angular_velocity.y)
+        wz = float(imu.angular_velocity.z)
+        dx = wy * exposure_s * focal_px * strength
+        dy = wx * exposure_s * focal_px * strength
+        length_px = math.sqrt(dx * dx + dy * dy)
+        max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
+        length_px = _clamp(length_px, 0.0, float(max_kernel))
+        angle_deg = float(math.degrees(math.atan2(dy, dx))) if length_px > 1e-6 else 0.0
+        imu_ns = _stamp_to_ns(imu.header.stamp)
+        diag = {
+            "status": "ok",
+            "imu_stamp": _stamp_to_str(imu.header.stamp),
+            "imu_dt_ms": (imu_ns - stamp_ns) / 1_000_000.0,
+            "imu_angular_velocity": [wx, wy, wz],
+            "exposure_ms": exposure_ms,
+            "fov_deg": fov_deg,
+            "focal_px": focal_px,
+        }
+        return float(length_px), angle_deg, diag
+
+    def _deblur_capture_image(
+        self,
+        img_path: str,
+        stamp: Optional[TimeMsg],
+        quality: int,
+    ) -> Dict[str, Any]:
+        info: Dict[str, Any] = {
+            "enabled": bool(self.get_parameter("enable_motion_deblur").value),
+            "path": "",
+            "status": "disabled",
+        }
+        if not info["enabled"]:
+            return info
+        if not img_path:
+            info["status"] = "missing_input_path"
+            return info
+        if not os.path.exists(img_path):
+            info["status"] = "missing_input_file"
+            return info
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if img is None:
+            info["status"] = "decode_failed"
+            return info
+
+        stem, ext = os.path.splitext(img_path)
+        ext = ext or ".jpg"
+        out_path = f"{stem}_deblur{ext}"
+        info["path"] = out_path
+
+        if stamp is None:
+            try:
+                shutil.copy2(img_path, out_path)
+                info["status"] = "copied_no_stamp"
+            except Exception as e:
+                info["status"] = f"copy_failed: {e}"
+            return info
+
+        stamp_ns = _stamp_to_ns(stamp)
+        length_px, angle_deg, diag = self._estimate_blur_kernel(stamp_ns, int(img.shape[1]))
+        info.update(diag)
+        info["kernel_length_px"] = float(length_px)
+        info["kernel_angle_deg"] = float(angle_deg)
+        min_kernel = max(0.0, _safe_float(self.get_parameter("deblur_min_kernel_px").value, 1.2))
+        if length_px < min_kernel:
+            try:
+                shutil.copy2(img_path, out_path)
+                info["status"] = "copied_low_motion"
+            except Exception as e:
+                info["status"] = f"copy_failed: {e}"
+            return info
+
+        max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
+        iterations = max(1, int(self.get_parameter("deblur_iterations").value))
+        psf = _line_psf(length_px, angle_deg, max_kernel=max_kernel)
+        try:
+            deblurred = _richardson_lucy_bgr(img, psf, iterations=iterations)
+            ok, err = self._write_jpeg_bgr(out_path, deblurred, quality)
+            if not ok:
+                info["status"] = f"write_failed: {err}"
+                return info
+            info["status"] = "deblurred"
+            info["method"] = "richardson_lucy_line_psf"
+            info["iterations"] = int(iterations)
+            return info
+        except Exception as e:
+            info["status"] = f"deblur_failed: {e}"
+            return info
+
     def _nearest_fix(self, stamp_ns: int) -> Optional[NavSatFix]:
         with self._sensor_lock:
             msgs = list(self._buf_fix)
@@ -1539,6 +2092,8 @@ class CaptureService(Node):
         cam1_path: str,
         cam0_stamp: Optional[TimeMsg],
         cam1_stamp: Optional[TimeMsg],
+        cam0_deblur: Optional[Dict[str, Any]] = None,
+        cam1_deblur: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         trigger_ns = _stamp_to_ns(trigger_stamp)
         metadata: Dict[str, Any] = {
@@ -1548,6 +2103,17 @@ class CaptureService(Node):
             "trigger_stamp": _stamp_to_str(trigger_stamp),
             "cameras": {},
         }
+        with self._sensor_lock:
+            odom_local_msgs = list(self._buf_odom_local)
+            odom_global_msgs = list(self._buf_odom_global)
+        odom_local_msgs.sort(key=lambda m: _stamp_to_ns(m.header.stamp))
+        odom_global_msgs.sort(key=lambda m: _stamp_to_ns(m.header.stamp))
+        metadata["trajectory"] = self._trajectory_bundle(trigger_ns)
+
+        deblur_by_cam: Dict[str, Optional[Dict[str, Any]]] = {
+            "cam0": cam0_deblur,
+            "cam1": cam1_deblur,
+        }
 
         def add_camera(name: str, path: str, stamp: Optional[TimeMsg]) -> None:
             if not path:
@@ -1556,6 +2122,9 @@ class CaptureService(Node):
                 "path": path,
                 "stamp": _stamp_to_str(stamp) if stamp is not None else None,
             }
+            deblur_info = deblur_by_cam.get(name)
+            if deblur_info is not None:
+                info["deblur"] = deblur_info
             if stamp is not None:
                 s_ns = _stamp_to_ns(stamp)
                 info["offset_from_trigger_ms"] = (s_ns - trigger_ns) / 1_000_000.0
@@ -1600,6 +2169,14 @@ class CaptureService(Node):
                             float(imu.linear_acceleration.z),
                         ],
                     }
+
+                interp_local = self._interp_odometry_at(odom_local_msgs, s_ns)
+                if interp_local is not None:
+                    info["interp_odom_local"] = interp_local
+
+                interp_global = self._interp_odometry_at(odom_global_msgs, s_ns)
+                if interp_global is not None:
+                    info["interp_odom_global"] = interp_global
 
                 odom_local = self._nearest_odom_local(s_ns)
                 if odom_local is not None:
@@ -2197,6 +2774,23 @@ class CaptureService(Node):
         else:
             msg = "OK (still mode)"
 
+        cam0_deblur = self._deblur_capture_image(cam0_path, stamp if cam0_path else None, quality)
+        cam1_deblur = self._deblur_capture_image(cam1_path, stamp if cam1_path else None, quality)
+        if cam0_deblur.get("path"):
+            msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
+        if cam1_deblur.get("path"):
+            msg = f"{msg}; cam1_deblur={cam1_deblur.get('path')}"
+        self._publish_capture_debug(
+            {
+                "status": "deblur",
+                "mode": "still",
+                "session_id": session,
+                "trigger_stamp": _stamp_to_str(stamp),
+                "cam0_deblur": cam0_deblur,
+                "cam1_deblur": cam1_deblur,
+            }
+        )
+
         if bool(self.get_parameter("write_capture_metadata").value):
             metadata = self._build_capture_metadata(
                 mode="still",
@@ -2206,7 +2800,17 @@ class CaptureService(Node):
                 cam1_path=cam1_path,
                 cam0_stamp=stamp if cam0_path else None,
                 cam1_stamp=stamp if cam1_path else None,
+                cam0_deblur=cam0_deblur,
+                cam1_deblur=cam1_deblur,
             )
+            if bool(self.get_parameter("write_trajectory_csv").value):
+                try:
+                    csv_path = self._write_trajectory_csv(out_dir, session, metadata.get("trajectory", {}))
+                    if csv_path:
+                        metadata["trajectory_csv"] = csv_path
+                        msg = f"{msg}; trajectory_csv={csv_path}"
+                except Exception as e:
+                    self.get_logger().error(f"Trajectory CSV write failed: {e}")
             try:
                 meta_path = self._write_capture_metadata(out_dir, session, metadata)
                 msg = f"{msg}; metadata={meta_path}"
@@ -2455,6 +3059,23 @@ class CaptureService(Node):
         else:
             msg = "OK (stream mode, cam1 skipped: only one stream detected)"
 
+        cam0_deblur = self._deblur_capture_image(cam0_path, cam0_stamp, quality)
+        cam1_deblur = self._deblur_capture_image(cam1_path, cam1_stamp, quality)
+        if cam0_deblur.get("path"):
+            msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
+        if cam1_deblur.get("path"):
+            msg = f"{msg}; cam1_deblur={cam1_deblur.get('path')}"
+        self._publish_capture_debug(
+            {
+                "status": "deblur",
+                "mode": "stream",
+                "session_id": session,
+                "trigger_stamp": _stamp_to_str(trigger_stamp),
+                "cam0_deblur": cam0_deblur,
+                "cam1_deblur": cam1_deblur,
+            }
+        )
+
         if bool(self.get_parameter("write_capture_metadata").value):
             metadata = self._build_capture_metadata(
                 mode="stream",
@@ -2464,7 +3085,17 @@ class CaptureService(Node):
                 cam1_path=cam1_path,
                 cam0_stamp=cam0_stamp if cam0_stamp is not None else trigger_stamp,
                 cam1_stamp=cam1_stamp,
+                cam0_deblur=cam0_deblur,
+                cam1_deblur=cam1_deblur,
             )
+            if bool(self.get_parameter("write_trajectory_csv").value):
+                try:
+                    csv_path = self._write_trajectory_csv(out_dir, session, metadata.get("trajectory", {}))
+                    if csv_path:
+                        metadata["trajectory_csv"] = csv_path
+                        msg = f"{msg}; trajectory_csv={csv_path}"
+                except Exception as e:
+                    self.get_logger().error(f"Trajectory CSV write failed: {e}")
             try:
                 meta_path = self._write_capture_metadata(out_dir, session, metadata)
                 msg = f"{msg}; metadata={meta_path}"

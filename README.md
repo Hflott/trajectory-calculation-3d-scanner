@@ -188,7 +188,14 @@ This allows lower-load UI preview (`preview_ui_*`) without reducing capture-stre
 
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
+- `*_cam0_deblur.jpg` / `*_cam1_deblur.jpg` (IMU motion-aware deblur output)
 - `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
+- `*_trajectory.csv` (interpolated trajectory samples, default 100 Hz around trigger)
+
+Capture metadata now also includes:
+- interpolated odometry at each camera timestamp (`interp_odom_local`, `interp_odom_global`)
+- a trajectory bundle sampled at `trajectory_sample_rate_hz` (default `100.0`)
+- per-camera deblur diagnostics (kernel length/angle, IMU delta, method, output path)
 
 Live stream-capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
 
@@ -240,6 +247,26 @@ ros2 launch subsea_bringup rover_app.launch.py \
   preview_ui_height:=360 \
   preview_ui_fps:=10
 ```
+
+Trajectory + deblur tuning example (Pi 5 field mode):
+
+```bash
+ros2 launch subsea_bringup rover_app.launch.py \
+  capture_mode:=stream \
+  start_localization:=true \
+  preview_width:=1280 \
+  preview_height:=720 \
+  preview_fps:=15 \
+  trajectory_sample_rate_hz:=100.0 \
+  trajectory_window_ms:=1000.0 \
+  deblur_exposure_ms:=8.0 \
+  deblur_strength:=1.0 \
+  deblur_iterations:=12
+```
+
+Notes:
+- True GNSS update rate still depends on your GNSS receiver/output configuration.
+- The EKF/navsat defaults in `subsea_localization` are now set to 100 Hz prediction/update cadence.
 
 If one preview camera exits with `failed to start camera` / `Broken pipe`, reduce load further:
 

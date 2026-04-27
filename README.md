@@ -81,6 +81,7 @@ ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 ```
 
 `rover_app.launch.py` now starts a `gpsd_client` component by default, so `/fix` is published automatically when `gpsd` is running and has GNSS data.
+`use_gpsd_json_bridge` now defaults to `false` so `/time_reference` is available for strict PPS-timed deblurring.
 
 Useful GNSS launch args:
 ```bash

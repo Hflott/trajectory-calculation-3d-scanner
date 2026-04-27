@@ -397,7 +397,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('start_gpsd_client', default_value='true'),
-        DeclareLaunchArgument('use_gpsd_json_bridge', default_value='true'),
+        DeclareLaunchArgument('use_gpsd_json_bridge', default_value='false'),
         DeclareLaunchArgument('gpsd_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('gpsd_port', default_value='2947'),
         DeclareLaunchArgument('start_imu_node', default_value='false'),

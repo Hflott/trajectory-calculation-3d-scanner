@@ -198,8 +198,8 @@ else
   echo "  note: launch file has no start_gpsd_client arg; skipping explicit GNSS arg"
 fi
 if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('use_gpsd_json_bridge'" "${LAUNCH_FILE}"; then
-  echo "  use_gpsd_json_bridge:=true"
-  LAUNCH_ARGS+=("use_gpsd_json_bridge:=true")
+  echo "  use_gpsd_json_bridge:=false"
+  LAUNCH_ARGS+=("use_gpsd_json_bridge:=false")
 fi
 if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('start_imu_node'" "${LAUNCH_FILE}"; then
   echo "  start_imu_node:=true"

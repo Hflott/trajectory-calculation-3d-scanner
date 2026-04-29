@@ -241,6 +241,17 @@ def _normalize_orientation_deg(v: Any) -> int:
     return int((round(raw / 90.0) % 4) * 90)
 
 
+def _apply_orientation_bgr(frame: np.ndarray, orientation_deg: int) -> np.ndarray:
+    o = _normalize_orientation_deg(orientation_deg)
+    if o == 180:
+        return cv2.flip(frame, -1)
+    if o == 90:
+        return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    if o == 270:
+        return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return frame
+
+
 def _lerp_vec3(
     a: Tuple[float, float, float],
     b: Tuple[float, float, float],
@@ -613,6 +624,11 @@ class CaptureService(Node):
         self.get_logger().info("Capture service ready: /capture_pair")
         self.get_logger().info("Capture action ready: /capture_pair")
         self.get_logger().info(f"Capture mode: {self._capture_mode()}")
+        self.get_logger().info(
+            "Camera orientation params: "
+            f"cam0_orientation={self._camera_orientation_for_index(int(self.get_parameter('cam0_index').value))} "
+            f"cam1_orientation={self._camera_orientation_for_index(int(self.get_parameter('cam1_index').value))}"
+        )
         self._setup_gpio_trigger()
         self.add_on_set_parameters_callback(self._on_set_parameters)
         self._start_preview_watchdog()
@@ -685,6 +701,10 @@ class CaptureService(Node):
                 restart_reasons.append(f"preview_format={str(p.value)}")
             elif p.name == "preview_role":
                 restart_reasons.append(f"preview_role={str(p.value)}")
+            elif p.name in ("cam0_orientation", "cam1_orientation"):
+                ov = _normalize_orientation_deg(p.value)
+                restart_reasons.append(f"{p.name}={ov}")
+                relay_reasons.append(f"{p.name}={ov}")
             elif p.name == "preview_relay_fps":
                 try:
                     v = int(p.value)
@@ -1022,12 +1042,15 @@ class CaptureService(Node):
         width: int,
         height: int,
         default_frame_id: str,
+        orientation_deg: int = 0,
     ) -> None:
         src_enc = (src.encoding or "").lower().strip()
         src_w = int(src.width)
         src_h = int(src.height)
         src_step = int(src.step)
         if (
+            int(orientation_deg) == 0
+            and
             src_enc == "bgr8"
             and src_w == int(width)
             and src_h == int(height)
@@ -1050,6 +1073,8 @@ class CaptureService(Node):
             return
 
         frame = self._imgmsg_to_bgr(src)
+        if int(orientation_deg) != 0:
+            frame = _apply_orientation_bgr(frame, orientation_deg)
         src_h, src_w = frame.shape[:2]
         if src_w != width or src_h != height:
             interp = cv2.INTER_AREA if (width < src_w or height < src_h) else cv2.INTER_LINEAR
@@ -1072,6 +1097,10 @@ class CaptureService(Node):
 
         width = self._relay_width
         height = self._relay_height
+        cam0_idx = int(self.get_parameter("cam0_index").value)
+        cam1_idx = int(self.get_parameter("cam1_index").value)
+        cam0_orientation = self._camera_orientation_for_index(cam0_idx)
+        cam1_orientation = self._camera_orientation_for_index(cam1_idx)
         msg0, msg1, _rx0, _rx1 = self._latest_stream_snapshot()
 
         if self._relay_pub0 is not None and msg0 is not None:
@@ -1084,6 +1113,7 @@ class CaptureService(Node):
                         width,
                         height,
                         "cam0_optical_frame",
+                        cam0_orientation,
                     )
                     self._relay_last_cam0_msg_id = msg_id
                 except Exception as e:
@@ -1099,6 +1129,7 @@ class CaptureService(Node):
                         width,
                         height,
                         "cam1_optical_frame",
+                        cam1_orientation,
                     )
                     self._relay_last_cam1_msg_id = msg_id
                 except Exception as e:
@@ -3296,6 +3327,10 @@ class CaptureService(Node):
 
         try:
             frame0 = self._imgmsg_to_bgr(msg0)
+            frame0 = _apply_orientation_bgr(
+                frame0,
+                self._camera_orientation_for_index(int(self.get_parameter("cam0_index").value)),
+            )
         except Exception as e:
             fail_msg = f"CAPTURE FAILED (stream mode): cam0 conversion failed: {e}"
             self.get_logger().error(fail_msg)
@@ -3332,6 +3367,10 @@ class CaptureService(Node):
         if msg1 is not None:
             try:
                 frame1 = self._imgmsg_to_bgr(msg1)
+                frame1 = _apply_orientation_bgr(
+                    frame1,
+                    self._camera_orientation_for_index(int(self.get_parameter("cam1_index").value)),
+                )
             except Exception as e:
                 fail_msg = f"CAPTURE FAILED (stream mode): cam1 conversion failed: {e}"
                 self.get_logger().error(fail_msg)

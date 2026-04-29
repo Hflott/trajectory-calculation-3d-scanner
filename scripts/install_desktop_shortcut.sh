@@ -6,6 +6,7 @@ APP_NAME="Rover App"
 APP_ID="subsea-rover-field"
 CAM0_ORIENTATION=""
 CAM1_ORIENTATION=""
+SWAP_PREVIEW_FEEDS="false"
 
 RUN_SCRIPT="${ROOT_DIR}/scripts/run_rover_field.sh"
 ICON_SRC="${ROOT_DIR}/assets/subsea_rover_icon.svg"
@@ -17,6 +18,7 @@ Usage: ./scripts/install_desktop_shortcut.sh [options]
 Options:
   --cam0-orientation DEG  Set cam0_orientation launch arg in desktop launcher (0/90/180/270)
   --cam1-orientation DEG  Set cam1_orientation launch arg in desktop launcher (0/90/180/270)
+  --swap-preview-feeds    Swap UI left/right feed placement (cam1 left, cam0 right)
   -h, --help              Show this help
 EOF
 }
@@ -43,6 +45,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "ERROR: --cam1-orientation requires a value" >&2; exit 1; }
       CAM1_ORIENTATION="$(normalize_orientation "$2")"
       shift 2
+      ;;
+    --swap-preview-feeds)
+      SWAP_PREVIEW_FEEDS="true"
+      shift
       ;;
     -h|--help)
       usage
@@ -92,6 +98,9 @@ if [[ -n "${CAM0_ORIENTATION}" ]]; then
 fi
 if [[ -n "${CAM1_ORIENTATION}" ]]; then
   ORIENT_ARGS="${ORIENT_ARGS} cam1_orientation:=${CAM1_ORIENTATION}"
+fi
+if [[ "${SWAP_PREVIEW_FEEDS}" == "true" ]]; then
+  ORIENT_ARGS="${ORIENT_ARGS} swap_preview_feeds:=true"
 fi
 
 cat > "${LAUNCHER_FILE}" <<EOF

@@ -46,6 +46,7 @@ def generate_launch_description():
     preview_ui_height = LaunchConfiguration('preview_ui_height')
     preview_ui_fps = LaunchConfiguration('preview_ui_fps')
     preview_format = LaunchConfiguration('preview_format')
+    swap_preview_feeds = LaunchConfiguration('swap_preview_feeds')
     cam0_orientation = LaunchConfiguration('cam0_orientation')
     cam1_orientation = LaunchConfiguration('cam1_orientation')
     ui_fps = LaunchConfiguration('ui_fps')
@@ -103,6 +104,12 @@ def generate_launch_description():
     deblur_max_integration_gap_ms_float = ParameterValue(deblur_max_integration_gap_ms, value_type=float)
     deblur_require_time_reference_bool = ParameterValue(deblur_require_time_reference, value_type=bool)
     deblur_max_time_reference_age_ms_float = ParameterValue(deblur_max_time_reference_age_ms, value_type=float)
+    ui_cam0_topic = PythonExpression([
+        "'/cam1/preview/image_raw' if '", swap_preview_feeds, "' == 'true' else '/cam0/preview/image_raw'"
+    ])
+    ui_cam1_topic = PythonExpression([
+        "'/cam0/preview/image_raw' if '", swap_preview_feeds, "' == 'true' else '/cam1/preview/image_raw'"
+    ])
 
     # Only start standalone camera_ros nodes if manage_previews:=false.
     cam_condition_no_respawn = IfCondition(
@@ -379,8 +386,8 @@ def generate_launch_description():
             'ui_fps': ui_fps_int,
             'preview_fps': preview_fps_int,
             'preview_relay_fps': preview_ui_fps_int,
-            'cam0_topic': '/cam0/preview/image_raw',
-            'cam1_topic': '/cam1/preview/image_raw',
+            'cam0_topic': ui_cam0_topic,
+            'cam1_topic': ui_cam1_topic,
             'capture_node': '/capture_service',
             'capture_event_topic': '/capture/events',
             'capture_debug_topic': capture_debug_topic,
@@ -431,6 +438,7 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_ui_height', default_value='360'),
         DeclareLaunchArgument('preview_ui_fps', default_value='15'),
         DeclareLaunchArgument('preview_format', default_value='BGR888'),
+        DeclareLaunchArgument('swap_preview_feeds', default_value='false'),
         DeclareLaunchArgument('cam0_orientation', default_value='0'),
         DeclareLaunchArgument('cam1_orientation', default_value='0'),
         DeclareLaunchArgument('ui_fps', default_value='15'),

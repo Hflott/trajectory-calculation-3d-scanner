@@ -147,7 +147,10 @@ Useful options:
 ./scripts/run_rover_field.sh --still
 ./scripts/run_rover_field.sh --no-localization
 ./scripts/run_rover_field.sh --skip-service-restart
+./scripts/run_rover_field.sh --swap-preview-feeds
 ```
+
+`--swap-preview-feeds` swaps UI placement only (left/right preview panes), while capture topics and metadata remain `cam0`/`cam1`.
 
 If your cameras appear upside down after a sensor swap, set per-camera orientation (degrees):
 ```bash
@@ -161,6 +164,10 @@ Create Raspberry Pi desktop shortcut + icon:
 Install desktop shortcut with camera rotation baked in:
 ```bash
 ./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180
+```
+Install desktop shortcut with both camera rotation and swapped UI feed placement:
+```bash
+./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180 --swap-preview-feeds
 ```
 The installed shortcut starts with `--skip-service-restart` to avoid sudo/password prompts.
 Recommended one-time setup so services start at boot:

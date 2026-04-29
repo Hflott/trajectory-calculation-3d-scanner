@@ -12,6 +12,7 @@ CAPTURE_MODE="stream"
 RESTART_SERVICES="true"
 GNSS_PREFLIGHT="true"
 ROS_CLEANUP="true"
+SWAP_PREVIEW_FEEDS="false"
 EXTRA_ARGS=()
 
 source_safe() {
@@ -45,6 +46,7 @@ Options:
   --skip-gnss-preflight   Skip GNSS UART/gpsd preflight checks
   --skip-service-restart  Do not restart gpsd/chrony before launch
   --skip-ros-cleanup      Do not stop stale ROS daemons/processes before launch
+  --swap-preview-feeds    Swap UI left/right feed placement (cam1 left, cam0 right)
   -h, --help              Show this help
 
 Any additional tokens are passed through to:
@@ -80,6 +82,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-ros-cleanup)
       ROS_CLEANUP="false"
+      shift
+      ;;
+    --swap-preview-feeds)
+      SWAP_PREVIEW_FEEDS="true"
       shift
       ;;
     -h|--help)
@@ -204,6 +210,10 @@ fi
 if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('start_imu_node'" "${LAUNCH_FILE}"; then
   echo "  start_imu_node:=true"
   LAUNCH_ARGS+=("start_imu_node:=true")
+fi
+if [[ "${SWAP_PREVIEW_FEEDS}" == "true" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('swap_preview_feeds'" "${LAUNCH_FILE}"; then
+  echo "  swap_preview_feeds:=true"
+  LAUNCH_ARGS+=("swap_preview_feeds:=true")
 fi
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   LAUNCH_ARGS+=("${EXTRA_ARGS[@]}")

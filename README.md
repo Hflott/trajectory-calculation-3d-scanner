@@ -158,6 +158,10 @@ Create Raspberry Pi desktop shortcut + icon:
 ```bash
 ./scripts/install_desktop_shortcut.sh
 ```
+Install desktop shortcut with camera rotation baked in:
+```bash
+./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180
+```
 The installed shortcut starts with `--skip-service-restart` to avoid sudo/password prompts.
 Recommended one-time setup so services start at boot:
 ```bash

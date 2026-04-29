@@ -46,6 +46,8 @@ def generate_launch_description():
     preview_ui_height = LaunchConfiguration('preview_ui_height')
     preview_ui_fps = LaunchConfiguration('preview_ui_fps')
     preview_format = LaunchConfiguration('preview_format')
+    cam0_orientation = LaunchConfiguration('cam0_orientation')
+    cam1_orientation = LaunchConfiguration('cam1_orientation')
     ui_fps = LaunchConfiguration('ui_fps')
     odom_local_topic = LaunchConfiguration('odom_local_topic')
     odom_global_topic = LaunchConfiguration('odom_global_topic')
@@ -83,6 +85,8 @@ def generate_launch_description():
     preview_ui_w_int = ParameterValue(preview_ui_width, value_type=int)
     preview_ui_h_int = ParameterValue(preview_ui_height, value_type=int)
     preview_ui_fps_int = ParameterValue(preview_ui_fps, value_type=int)
+    cam0_orientation_int = ParameterValue(cam0_orientation, value_type=int)
+    cam1_orientation_int = ParameterValue(cam1_orientation, value_type=int)
     ui_fps_int = ParameterValue(ui_fps, value_type=int)
     trajectory_sample_rate_hz_float = ParameterValue(trajectory_sample_rate_hz, value_type=float)
     trajectory_window_ms_float = ParameterValue(trajectory_window_ms, value_type=float)
@@ -147,6 +151,7 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w_int,
             'height': preview_h_int,
+            'orientation': cam0_orientation_int,
             'use_node_time': False,
         }],
         respawn=False,
@@ -164,6 +169,7 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w_int,
             'height': preview_h_int,
+            'orientation': cam1_orientation_int,
             'use_node_time': False,
         }],
         respawn=False,
@@ -181,6 +187,7 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w_int,
             'height': preview_h_int,
+            'orientation': cam0_orientation_int,
             'use_node_time': False,
         }],
         respawn=True,
@@ -199,6 +206,7 @@ def generate_launch_description():
             'role': 'viewfinder',
             'width': preview_w_int,
             'height': preview_h_int,
+            'orientation': cam1_orientation_int,
             'use_node_time': False,
         }],
         respawn=True,
@@ -326,6 +334,8 @@ def generate_launch_description():
             'preview_width': preview_w_int,
             'preview_height': preview_h_int,
             'preview_fps': preview_fps_int,
+            'cam0_orientation': cam0_orientation_int,
+            'cam1_orientation': cam1_orientation_int,
             'preview_relay_enable': True,
             'preview_relay_width': preview_ui_w_int,
             'preview_relay_height': preview_ui_h_int,
@@ -421,6 +431,8 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_ui_height', default_value='360'),
         DeclareLaunchArgument('preview_ui_fps', default_value='15'),
         DeclareLaunchArgument('preview_format', default_value='BGR888'),
+        DeclareLaunchArgument('cam0_orientation', default_value='0'),
+        DeclareLaunchArgument('cam1_orientation', default_value='0'),
         DeclareLaunchArgument('ui_fps', default_value='15'),
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
         DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),

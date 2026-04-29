@@ -149,6 +149,11 @@ Useful options:
 ./scripts/run_rover_field.sh --skip-service-restart
 ```
 
+If your cameras appear upside down after a sensor swap, set per-camera orientation (degrees):
+```bash
+./scripts/run_rover_field.sh cam0_orientation:=180 cam1_orientation:=180
+```
+
 Create Raspberry Pi desktop shortcut + icon:
 ```bash
 ./scripts/install_desktop_shortcut.sh

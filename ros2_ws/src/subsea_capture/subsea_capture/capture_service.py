@@ -232,6 +232,15 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _normalize_orientation_deg(v: Any) -> int:
+    try:
+        raw = int(v)
+    except Exception:
+        raw = 0
+    # Orientation is expressed in 90-degree steps.
+    return int((round(raw / 90.0) % 4) * 90)
+
+
 def _lerp_vec3(
     a: Tuple[float, float, float],
     b: Tuple[float, float, float],
@@ -380,6 +389,8 @@ class CaptureService(Node):
         self.declare_parameter("preview_relay_height", 360)
         self.declare_parameter("preview_relay_fps", 10)
         self.declare_parameter("preview_format", "RGB888")
+        self.declare_parameter("cam0_orientation", 0)
+        self.declare_parameter("cam1_orientation", 0)
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
@@ -2656,6 +2667,7 @@ class CaptureService(Node):
         fps = int(self.get_parameter("preview_fps").value)
         fmt = str(self.get_parameter("preview_format").value).strip()
         role = str(self.get_parameter("preview_role").value)
+        orientation = self._camera_orientation_for_index(cam_index)
         frame_us = int(1_000_000 / max(1, fps))
 
         params = {
@@ -2663,6 +2675,7 @@ class CaptureService(Node):
             "role": role,
             "width": w,
             "height": h,
+            "orientation": int(orientation),
             "FrameDurationLimits": [frame_us, frame_us],
             "use_node_time": False,
             "frame_id": frame_id,
@@ -2671,6 +2684,17 @@ class CaptureService(Node):
         if fmt and fmt.lower() not in ("auto", "default", "native"):
             params["format"] = fmt
         return params
+
+    def _camera_orientation_for_index(self, cam_index: int) -> int:
+        cam0_idx = int(self.get_parameter("cam0_index").value)
+        cam1_idx = int(self.get_parameter("cam1_index").value)
+        if int(cam_index) == cam0_idx:
+            key = "cam0_orientation"
+        elif int(cam_index) == cam1_idx:
+            key = "cam1_orientation"
+        else:
+            key = "cam0_orientation"
+        return _normalize_orientation_deg(self.get_parameter(key).value)
 
     def _preview_env(self) -> dict:
         env = os.environ.copy()
@@ -2908,8 +2932,9 @@ class CaptureService(Node):
         warmup_ms = int(self.get_parameter("warmup_ms").value)
         timeout_ms = int(self.get_parameter("timeout_ms").value)
         t_ms = max(timeout_ms, warmup_ms + 200)
+        orientation = self._camera_orientation_for_index(cam_index)
 
-        return [
+        cmd = [
             "rpicam-still",
             "--nopreview",
             "--camera", str(cam_index),
@@ -2919,6 +2944,10 @@ class CaptureService(Node):
             "-t", str(t_ms),
             "-o", out_path,
         ]
+        # libcamera/rpicam can do 180 degrees via H+V flip.
+        if orientation == 180:
+            cmd.extend(["--hflip", "--vflip"])
+        return cmd
 
     def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str]:
         cmd = self._rpicam_cmd(cam_index, out_path, quality)

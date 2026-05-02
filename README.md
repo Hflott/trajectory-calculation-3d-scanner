@@ -81,15 +81,17 @@ ros2 launch subsea_bringup rover_app.launch.py start_localization:=true
 ```
 
 `rover_app.launch.py` now starts a `gpsd_client` component by default, so `/fix` is published automatically when `gpsd` is running and has GNSS data.
-`use_gpsd_json_bridge` now defaults to `false` so `/time_reference` is available for strict PPS-timed deblurring.
+For strict PPS-timed deblurring you also need `/time_reference`; use `use_gpsd_json_bridge:=true` (the bridge publishes both `/fix` and `/time_reference`).
 
 Useful GNSS launch args:
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
   start_gpsd_client:=true \
+  use_gpsd_json_bridge:=true \
   gpsd_host:=127.0.0.1 \
   gpsd_port:=2947
 ```
+`use_gpsd_json_bridge:=true` enables `subsea_bringup/gpsd_json_fix_bridge`, which publishes both `/fix` and `/time_reference` from gpsd TPV data.
 
 Useful IMU launch args (BNO085 over I2C):
 ```bash
@@ -99,6 +101,7 @@ ros2 launch subsea_bringup rover_app.launch.py \
   imu_frame_id:=imu_link \
   imu_rate_hz:=100.0 \
   imu_i2c_address:=74 \
+  imu_i2c_bus:=1 \
   imu_timestamp_mode:=read_end
 ```
 
@@ -117,7 +120,7 @@ This also enables the BNO085 IMU node (`start_imu_node:=true`) when available.
 One-time BNO085 Python dependencies on Raspberry Pi:
 ```bash
 sudo apt-get install -y python3-pip python3-libgpiod python3-dev i2c-tools
-sudo pip3 install --break-system-packages adafruit-blinka adafruit-circuitpython-bno08x
+sudo pip3 install --break-system-packages adafruit-blinka adafruit-circuitpython-bno08x adafruit-extended-bus
 ```
 
 Quick IMU checks:
@@ -125,6 +128,18 @@ Quick IMU checks:
 sudo i2cdetect -y -r 1     # expect 0x4a or 0x4b
 ros2 topic hz /imu/data
 ros2 topic echo /imu/data --once
+```
+
+If BNO085 is moved from GPIO 2/3 to GPIO 5/6, create a software I2C bus first:
+```bash
+echo "dtoverlay=i2c-gpio,bus=3,i2c_gpio_sda=5,i2c_gpio_scl=6,i2c_gpio_delay_us=2" | sudo tee -a /boot/firmware/config.txt
+sudo reboot
+```
+After reboot:
+```bash
+ls /dev/i2c-3
+sudo i2cdetect -y -r 3     # expect 0x4a or 0x4b
+./scripts/run_rover_field.sh imu_i2c_bus:=3
 ```
 
 Quick field diagnostics (gpsd/PPS/chrony + ROS topic checks):
@@ -147,7 +162,9 @@ Useful options:
 ./scripts/run_rover_field.sh --still
 ./scripts/run_rover_field.sh --no-localization
 ./scripts/run_rover_field.sh --skip-service-restart
+./scripts/run_rover_field.sh --use-gpsd-json-bridge
 ./scripts/run_rover_field.sh --swap-preview-feeds
+./scripts/run_rover_field.sh --imu-i2c-bus 3
 ```
 
 `--swap-preview-feeds` swaps UI placement only (left/right preview panes), while capture topics and metadata remain `cam0`/`cam1`.
@@ -168,6 +185,14 @@ Install desktop shortcut with camera rotation baked in:
 Install desktop shortcut with both camera rotation and swapped UI feed placement:
 ```bash
 ./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180 --swap-preview-feeds
+```
+Install desktop shortcut with alternate IMU bus (example: i2c-gpio bus 3 on GPIO5/6):
+```bash
+./scripts/install_desktop_shortcut.sh --imu-i2c-bus 3
+```
+Install desktop shortcut that starts with gpsd JSON bridge (`/fix` + `/time_reference`):
+```bash
+./scripts/install_desktop_shortcut.sh --use-gpsd-json-bridge
 ```
 The installed shortcut starts with `--skip-service-restart` to avoid sudo/password prompts.
 Recommended one-time setup so services start at boot:

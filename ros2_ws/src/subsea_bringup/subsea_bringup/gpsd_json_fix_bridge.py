@@ -10,7 +10,7 @@ import rclpy
 from builtin_interfaces.msg import Time as TimeMsg
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import NavSatFix, NavSatStatus
+from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 
 
 def _to_stamp(tpv_time: Optional[str]) -> Optional[TimeMsg]:
@@ -52,16 +52,22 @@ class GpsdJsonFixBridge(Node):
         self.declare_parameter("host", "127.0.0.1")
         self.declare_parameter("port", 2947)
         self.declare_parameter("fix_topic", "/fix")
+        self.declare_parameter("time_ref_topic", "/time_reference")
+        self.declare_parameter("time_ref_source", "gpsd_tpv")
         self.declare_parameter("frame_id", "gps")
         self.declare_parameter("reconnect_s", 1.0)
         self.declare_parameter("publish_no_fix", False)
+        self.declare_parameter("publish_time_reference", True)
 
         self._host = str(self.get_parameter("host").value)
         self._port = int(self.get_parameter("port").value)
         self._fix_topic = str(self.get_parameter("fix_topic").value)
+        self._time_ref_topic = str(self.get_parameter("time_ref_topic").value)
+        self._time_ref_source = str(self.get_parameter("time_ref_source").value).strip() or "gpsd_tpv"
         self._frame_id = str(self.get_parameter("frame_id").value)
         self._reconnect_s = max(0.2, float(self.get_parameter("reconnect_s").value))
         self._publish_no_fix = bool(self.get_parameter("publish_no_fix").value)
+        self._publish_time_ref = bool(self.get_parameter("publish_time_reference").value)
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -70,13 +76,18 @@ class GpsdJsonFixBridge(Node):
             durability=DurabilityPolicy.VOLATILE,
         )
         self._pub = self.create_publisher(NavSatFix, self._fix_topic, qos)
+        self._time_pub = self.create_publisher(TimeReference, self._time_ref_topic, qos)
 
         self._stop_evt = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
         self._got_first_fix = False
         self.get_logger().info(
-            f"gpsd_json_fix_bridge started: host={self._host} port={self._port} topic={self._fix_topic}"
+            "gpsd_json_fix_bridge started: "
+            f"host={self._host} port={self._port} "
+            f"fix_topic={self._fix_topic} "
+            f"time_ref_topic={self._time_ref_topic} "
+            f"publish_time_reference={self._publish_time_ref}"
         )
 
     def destroy_node(self):
@@ -125,13 +136,18 @@ class GpsdJsonFixBridge(Node):
 
     def _publish_from_tpv(self, tpv: dict) -> None:
         mode = int(tpv.get("mode", 0) or 0)
+        status_raw = int(tpv.get("status", 1) or 1)
         if mode < 2 and (not self._publish_no_fix):
+            # No fix to publish, but still emit time reference if available.
+            stamp = _to_stamp(tpv.get("time"))
+            self._publish_time_reference(stamp)
             return
 
         out = NavSatFix()
         out.header.frame_id = self._frame_id
         stamp = _to_stamp(tpv.get("time"))
         out.header.stamp = stamp if stamp is not None else self.get_clock().now().to_msg()
+        self._publish_time_reference(stamp)
 
         if mode < 2:
             out.status.status = NavSatStatus.STATUS_NO_FIX
@@ -153,7 +169,12 @@ class GpsdJsonFixBridge(Node):
         if alt is None:
             alt = 0.0
 
-        out.status.status = NavSatStatus.STATUS_FIX
+        # gpsd JSON TPV "status" maps approximately to NMEA quality.
+        # Treat DGPS/RTK quality as GBAS/RTK fix in NavSatStatus for UI correction state.
+        if status_raw in (2, 3, 4):
+            out.status.status = NavSatStatus.STATUS_GBAS_FIX
+        else:
+            out.status.status = NavSatStatus.STATUS_FIX
         out.status.service = NavSatStatus.SERVICE_GPS
         out.latitude = lat
         out.longitude = lon
@@ -185,6 +206,16 @@ class GpsdJsonFixBridge(Node):
             self.get_logger().info(
                 f"First fix published: lat={out.latitude:.8f} lon={out.longitude:.8f} alt={out.altitude:.3f}"
             )
+
+    def _publish_time_reference(self, tpv_stamp: Optional[TimeMsg]) -> None:
+        if (not self._publish_time_ref) or tpv_stamp is None:
+            return
+        msg = TimeReference()
+        # Stamp with local disciplined system clock; tpv_stamp keeps GNSS-reported time.
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.time_ref = tpv_stamp
+        msg.source = self._time_ref_source
+        self._time_pub.publish(msg)
 
 
 def main(args=None) -> int:

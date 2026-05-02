@@ -7,6 +7,8 @@ APP_ID="subsea-rover-field"
 CAM0_ORIENTATION=""
 CAM1_ORIENTATION=""
 SWAP_PREVIEW_FEEDS="false"
+IMU_I2C_BUS=""
+USE_GPSD_JSON_BRIDGE="false"
 
 RUN_SCRIPT="${ROOT_DIR}/scripts/run_rover_field.sh"
 ICON_SRC="${ROOT_DIR}/assets/subsea_rover_icon.svg"
@@ -19,6 +21,8 @@ Options:
   --cam0-orientation DEG  Set cam0_orientation launch arg in desktop launcher (0/90/180/270)
   --cam1-orientation DEG  Set cam1_orientation launch arg in desktop launcher (0/90/180/270)
   --swap-preview-feeds    Swap UI left/right feed placement (cam1 left, cam0 right)
+  --imu-i2c-bus N         Set imu_i2c_bus launch arg in desktop launcher
+  --use-gpsd-json-bridge  Add --use-gpsd-json-bridge to launcher command
   -h, --help              Show this help
 EOF
 }
@@ -48,6 +52,19 @@ while [[ $# -gt 0 ]]; do
       ;;
     --swap-preview-feeds)
       SWAP_PREVIEW_FEEDS="true"
+      shift
+      ;;
+    --imu-i2c-bus)
+      [[ $# -ge 2 ]] || { echo "ERROR: --imu-i2c-bus requires a value" >&2; exit 1; }
+      if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --imu-i2c-bus must be a non-negative integer (got '$2')" >&2
+        exit 1
+      fi
+      IMU_I2C_BUS="$2"
+      shift 2
+      ;;
+    --use-gpsd-json-bridge)
+      USE_GPSD_JSON_BRIDGE="true"
       shift
       ;;
     -h|--help)
@@ -102,6 +119,13 @@ fi
 if [[ "${SWAP_PREVIEW_FEEDS}" == "true" ]]; then
   ORIENT_ARGS="${ORIENT_ARGS} swap_preview_feeds:=true"
 fi
+if [[ -n "${IMU_I2C_BUS}" ]]; then
+  ORIENT_ARGS="${ORIENT_ARGS} imu_i2c_bus:=${IMU_I2C_BUS}"
+fi
+RUN_FLAGS=""
+if [[ "${USE_GPSD_JSON_BRIDGE}" == "true" ]]; then
+  RUN_FLAGS="${RUN_FLAGS} --use-gpsd-json-bridge"
+fi
 
 cat > "${LAUNCHER_FILE}" <<EOF
 #!/usr/bin/env bash
@@ -109,7 +133,7 @@ set -Eeuo pipefail
 cd "${ROOT_DIR}"
 # Touchscreen-friendly default: avoid sudo prompt on launch.
 # gpsd/chrony should be enabled at boot; this still allows extra launch args.
-exec "${RUN_SCRIPT}" --skip-service-restart${ORIENT_ARGS} "\$@"
+exec "${RUN_SCRIPT}" --skip-service-restart${RUN_FLAGS}${ORIENT_ARGS} "\$@"
 EOF
 chmod +x "${LAUNCHER_FILE}"
 
@@ -142,8 +166,11 @@ fi
 echo "Desktop shortcut installed."
 echo "  Desktop icon: ${DESKTOP_FILE}"
 echo "  App menu:     ${APP_FILE}"
-if [[ -n "${CAM0_ORIENTATION}" || -n "${CAM1_ORIENTATION}" ]]; then
-  echo "  Orientation args:${ORIENT_ARGS}"
+if [[ -n "${CAM0_ORIENTATION}" || -n "${CAM1_ORIENTATION}" || "${SWAP_PREVIEW_FEEDS}" == "true" || -n "${IMU_I2C_BUS}" || "${USE_GPSD_JSON_BRIDGE}" == "true" ]]; then
+  echo "  Launcher args:${ORIENT_ARGS}"
+fi
+if [[ "${USE_GPSD_JSON_BRIDGE}" == "true" ]]; then
+  echo "  Launcher flags:${RUN_FLAGS}"
 fi
 echo
 echo "If first launch is blocked, right-click the icon and choose 'Allow Launching'."

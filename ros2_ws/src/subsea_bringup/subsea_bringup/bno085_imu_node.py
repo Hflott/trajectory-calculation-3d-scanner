@@ -15,6 +15,7 @@ class Bno085ImuNode(Node):
         self.declare_parameter("frame_id", "imu_link")
         self.declare_parameter("rate_hz", 100.0)
         self.declare_parameter("i2c_address", 0x4A)
+        self.declare_parameter("i2c_bus", 1)
         self.declare_parameter("enable_rotation", True)
         self.declare_parameter("enable_accel", True)
         self.declare_parameter("enable_gyro", True)
@@ -28,6 +29,10 @@ class Bno085ImuNode(Node):
         self._frame_id = str(self.get_parameter("frame_id").value)
         self._rate_hz = max(1.0, float(self.get_parameter("rate_hz").value))
         self._addr = int(self.get_parameter("i2c_address").value)
+        self._i2c_bus = int(self.get_parameter("i2c_bus").value)
+        if self._i2c_bus < 0:
+            self.get_logger().warn(f"Invalid i2c_bus={self._i2c_bus}; falling back to 1")
+            self._i2c_bus = 1
         self._en_rot = bool(self.get_parameter("enable_rotation").value)
         self._en_acc = bool(self.get_parameter("enable_accel").value)
         self._en_gyr = bool(self.get_parameter("enable_gyro").value)
@@ -82,7 +87,20 @@ class Bno085ImuNode(Node):
 
         self._lib_error = None
         try:
-            i2c = busio.I2C(board.SCL, board.SDA)
+            if self._i2c_bus == 1:
+                i2c = busio.I2C(board.SCL, board.SDA)
+                i2c_path = "/dev/i2c-1 (board.SCL/board.SDA)"
+            else:
+                try:
+                    from adafruit_extended_bus import ExtendedI2C
+                except Exception as e:
+                    raise RuntimeError(
+                        "i2c_bus is not 1, but adafruit_extended_bus is unavailable "
+                        f"({e}). Install on Pi: sudo pip3 install --break-system-packages adafruit-extended-bus"
+                    ) from e
+                i2c = ExtendedI2C(self._i2c_bus)
+                i2c_path = f"/dev/i2c-{self._i2c_bus}"
+
             sensor = BNO08X_I2C(i2c, address=self._addr)
             # Interval in microseconds expected by Adafruit API.
             interval_us = max(5_000, int(1_000_000.0 / self._rate_hz))
@@ -102,7 +120,7 @@ class Bno085ImuNode(Node):
 
             self._sensor = sensor
             self.get_logger().info(
-                f"BNO085 ready on I2C address 0x{self._addr:02X}; "
+                f"BNO085 ready on I2C {i2c_path} address 0x{self._addr:02X}; "
                 f"features: rot={self._enabled_rotation} acc={self._enabled_accel} gyro={self._enabled_gyro}; "
                 f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz "
                 f"(timestamp_mode={self._stamp_mode})"
@@ -110,8 +128,8 @@ class Bno085ImuNode(Node):
         except Exception as e:
             self._sensor = None
             self._warn_once(
-                f"BNO085 init failed at 0x{self._addr:02X}: {e} "
-                "(check I2C wiring and i2cdetect -y -r 1)"
+                f"BNO085 init failed on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {e} "
+                f"(check wiring and i2cdetect -y -r {self._i2c_bus})"
             )
 
     def _try_reconnect_if_needed(self) -> None:

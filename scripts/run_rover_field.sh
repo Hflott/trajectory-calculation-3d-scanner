@@ -13,6 +13,8 @@ RESTART_SERVICES="true"
 GNSS_PREFLIGHT="true"
 ROS_CLEANUP="true"
 SWAP_PREVIEW_FEEDS="false"
+IMU_I2C_BUS=""
+USE_GPSD_JSON_BRIDGE="false"
 EXTRA_ARGS=()
 
 source_safe() {
@@ -46,7 +48,10 @@ Options:
   --skip-gnss-preflight   Skip GNSS UART/gpsd preflight checks
   --skip-service-restart  Do not restart gpsd/chrony before launch
   --skip-ros-cleanup      Do not stop stale ROS daemons/processes before launch
+  --use-gpsd-json-bridge  Use subsea gpsd JSON bridge for /fix (and /time_reference)
+  --use-gpsd-client       Use gpsd_client component (default)
   --swap-preview-feeds    Swap UI left/right feed placement (cam1 left, cam0 right)
+  --imu-i2c-bus N         Set imu_i2c_bus:=N for BNO085 (e.g. 3 for i2c-gpio on GPIO5/6)
   -h, --help              Show this help
 
 Any additional tokens are passed through to:
@@ -87,6 +92,23 @@ while [[ $# -gt 0 ]]; do
     --swap-preview-feeds)
       SWAP_PREVIEW_FEEDS="true"
       shift
+      ;;
+    --use-gpsd-json-bridge)
+      USE_GPSD_JSON_BRIDGE="true"
+      shift
+      ;;
+    --use-gpsd-client)
+      USE_GPSD_JSON_BRIDGE="false"
+      shift
+      ;;
+    --imu-i2c-bus)
+      [[ $# -ge 2 ]] || { echo "ERROR: --imu-i2c-bus requires a value" >&2; exit 1; }
+      if [[ ! "$2" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --imu-i2c-bus must be a non-negative integer (got '$2')" >&2
+        exit 1
+      fi
+      IMU_I2C_BUS="$2"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -188,8 +210,12 @@ echo "  start_localization:=${START_LOCALIZATION}"
 echo "  capture_mode:=${CAPTURE_MODE}"
 echo "  gnss_preflight:=${GNSS_PREFLIGHT}"
 echo "  ros_cleanup:=${ROS_CLEANUP}"
+echo "  use_gpsd_json_bridge:=${USE_GPSD_JSON_BRIDGE}"
 if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   echo "  extra args: ${EXTRA_ARGS[*]}"
+fi
+if [[ -n "${IMU_I2C_BUS}" ]]; then
+  echo "  imu_i2c_bus:=${IMU_I2C_BUS}"
 fi
 echo
 
@@ -204,12 +230,16 @@ else
   echo "  note: launch file has no start_gpsd_client arg; skipping explicit GNSS arg"
 fi
 if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('use_gpsd_json_bridge'" "${LAUNCH_FILE}"; then
-  echo "  use_gpsd_json_bridge:=false"
-  LAUNCH_ARGS+=("use_gpsd_json_bridge:=false")
+  echo "  use_gpsd_json_bridge:=${USE_GPSD_JSON_BRIDGE}"
+  LAUNCH_ARGS+=("use_gpsd_json_bridge:=${USE_GPSD_JSON_BRIDGE}")
 fi
 if [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('start_imu_node'" "${LAUNCH_FILE}"; then
   echo "  start_imu_node:=true"
   LAUNCH_ARGS+=("start_imu_node:=true")
+fi
+if [[ -n "${IMU_I2C_BUS}" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('imu_i2c_bus'" "${LAUNCH_FILE}"; then
+  echo "  imu_i2c_bus:=${IMU_I2C_BUS}"
+  LAUNCH_ARGS+=("imu_i2c_bus:=${IMU_I2C_BUS}")
 fi
 if [[ "${SWAP_PREVIEW_FEEDS}" == "true" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('swap_preview_feeds'" "${LAUNCH_FILE}"; then
   echo "  swap_preview_feeds:=true"

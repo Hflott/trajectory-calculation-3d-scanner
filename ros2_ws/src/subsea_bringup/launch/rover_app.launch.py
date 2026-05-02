@@ -32,6 +32,9 @@ def generate_launch_description():
     imu_i2c_address = LaunchConfiguration('imu_i2c_address')
     imu_i2c_bus = LaunchConfiguration('imu_i2c_bus')
     imu_timestamp_mode = LaunchConfiguration('imu_timestamp_mode')
+    imu_enable_rotation = LaunchConfiguration('imu_enable_rotation')
+    imu_enable_accel = LaunchConfiguration('imu_enable_accel')
+    imu_enable_gyro = LaunchConfiguration('imu_enable_gyro')
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
@@ -82,6 +85,9 @@ def generate_launch_description():
     imu_rate_hz_float = ParameterValue(imu_rate_hz, value_type=float)
     imu_i2c_address_int = ParameterValue(imu_i2c_address, value_type=int)
     imu_i2c_bus_int = ParameterValue(imu_i2c_bus, value_type=int)
+    imu_enable_rotation_bool = ParameterValue(imu_enable_rotation, value_type=bool)
+    imu_enable_accel_bool = ParameterValue(imu_enable_accel, value_type=bool)
+    imu_enable_gyro_bool = ParameterValue(imu_enable_gyro, value_type=bool)
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
@@ -279,6 +285,9 @@ def generate_launch_description():
             'i2c_address': imu_i2c_address_int,
             'i2c_bus': imu_i2c_bus_int,
             'timestamp_mode': imu_timestamp_mode,
+            'enable_rotation': imu_enable_rotation_bool,
+            'enable_accel': imu_enable_accel_bool,
+            'enable_gyro': imu_enable_gyro_bool,
         }],
         condition=IfCondition(start_imu_node),
     )
@@ -427,6 +436,9 @@ def generate_launch_description():
         DeclareLaunchArgument('imu_i2c_address', default_value='74'),
         DeclareLaunchArgument('imu_i2c_bus', default_value='1'),
         DeclareLaunchArgument('imu_timestamp_mode', default_value='read_end'),
+        DeclareLaunchArgument('imu_enable_rotation', default_value='true'),
+        DeclareLaunchArgument('imu_enable_accel', default_value='true'),
+        DeclareLaunchArgument('imu_enable_gyro', default_value='true'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),

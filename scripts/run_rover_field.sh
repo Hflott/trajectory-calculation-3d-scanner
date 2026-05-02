@@ -14,6 +14,8 @@ GNSS_PREFLIGHT="true"
 ROS_CLEANUP="true"
 SWAP_PREVIEW_FEEDS="false"
 IMU_I2C_BUS=""
+IMU_RATE_HZ=""
+IMU_GYRO_ONLY="false"
 USE_GPSD_JSON_BRIDGE="false"
 EXTRA_ARGS=()
 
@@ -52,6 +54,8 @@ Options:
   --use-gpsd-client       Use gpsd_client component (default)
   --swap-preview-feeds    Swap UI left/right feed placement (cam1 left, cam0 right)
   --imu-i2c-bus N         Set imu_i2c_bus:=N for BNO085 (e.g. 3 for i2c-gpio on GPIO5/6)
+  --imu-rate-hz N         Set imu_rate_hz:=N (float, e.g. 100 or 200)
+  --imu-gyro-only         Start IMU with gyro only (disable rotation+accel features)
   -h, --help              Show this help
 
 Any additional tokens are passed through to:
@@ -109,6 +113,19 @@ while [[ $# -gt 0 ]]; do
       fi
       IMU_I2C_BUS="$2"
       shift 2
+      ;;
+    --imu-rate-hz)
+      [[ $# -ge 2 ]] || { echo "ERROR: --imu-rate-hz requires a value" >&2; exit 1; }
+      if [[ ! "$2" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        echo "ERROR: --imu-rate-hz must be a positive number (got '$2')" >&2
+        exit 1
+      fi
+      IMU_RATE_HZ="$2"
+      shift 2
+      ;;
+    --imu-gyro-only)
+      IMU_GYRO_ONLY="true"
+      shift
       ;;
     -h|--help)
       usage
@@ -217,6 +234,12 @@ fi
 if [[ -n "${IMU_I2C_BUS}" ]]; then
   echo "  imu_i2c_bus:=${IMU_I2C_BUS}"
 fi
+if [[ -n "${IMU_RATE_HZ}" ]]; then
+  echo "  imu_rate_hz:=${IMU_RATE_HZ}"
+fi
+if [[ "${IMU_GYRO_ONLY}" == "true" ]]; then
+  echo "  imu_mode:=gyro_only"
+fi
 echo
 
 LAUNCH_ARGS=(
@@ -240,6 +263,16 @@ fi
 if [[ -n "${IMU_I2C_BUS}" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('imu_i2c_bus'" "${LAUNCH_FILE}"; then
   echo "  imu_i2c_bus:=${IMU_I2C_BUS}"
   LAUNCH_ARGS+=("imu_i2c_bus:=${IMU_I2C_BUS}")
+fi
+if [[ -n "${IMU_RATE_HZ}" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('imu_rate_hz'" "${LAUNCH_FILE}"; then
+  echo "  imu_rate_hz:=${IMU_RATE_HZ}"
+  LAUNCH_ARGS+=("imu_rate_hz:=${IMU_RATE_HZ}")
+fi
+if [[ "${IMU_GYRO_ONLY}" == "true" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('imu_enable_rotation'" "${LAUNCH_FILE}"; then
+  echo "  imu_enable_rotation:=false"
+  echo "  imu_enable_accel:=false"
+  echo "  imu_enable_gyro:=true"
+  LAUNCH_ARGS+=("imu_enable_rotation:=false" "imu_enable_accel:=false" "imu_enable_gyro:=true")
 fi
 if [[ "${SWAP_PREVIEW_FEEDS}" == "true" ]] && [[ -f "${LAUNCH_FILE}" ]] && grep -q "DeclareLaunchArgument('swap_preview_feeds'" "${LAUNCH_FILE}"; then
   echo "  swap_preview_feeds:=true"

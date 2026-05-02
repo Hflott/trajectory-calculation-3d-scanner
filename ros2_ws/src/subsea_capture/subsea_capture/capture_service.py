@@ -402,6 +402,8 @@ class CaptureService(Node):
         self.declare_parameter("preview_format", "RGB888")
         self.declare_parameter("cam0_orientation", 0)
         self.declare_parameter("cam1_orientation", 0)
+        # When True, preview camera nodes rotate frames and capture_service must NOT rotate again.
+        self.declare_parameter("preview_source_applies_orientation", True)
         self.declare_parameter("preview_role", "viewfinder")
         self.declare_parameter("preview_start_stagger_s", 0.7)
         self.declare_parameter("preview_restart_attempts", 2)
@@ -705,6 +707,9 @@ class CaptureService(Node):
                 ov = _normalize_orientation_deg(p.value)
                 restart_reasons.append(f"{p.name}={ov}")
                 relay_reasons.append(f"{p.name}={ov}")
+            elif p.name == "preview_source_applies_orientation":
+                restart_reasons.append(f"preview_source_applies_orientation={bool(p.value)}")
+                relay_reasons.append(f"preview_source_applies_orientation={bool(p.value)}")
             elif p.name == "preview_relay_fps":
                 try:
                     v = int(p.value)
@@ -1099,8 +1104,12 @@ class CaptureService(Node):
         height = self._relay_height
         cam0_idx = int(self.get_parameter("cam0_index").value)
         cam1_idx = int(self.get_parameter("cam1_index").value)
-        cam0_orientation = self._camera_orientation_for_index(cam0_idx)
-        cam1_orientation = self._camera_orientation_for_index(cam1_idx)
+        if bool(self.get_parameter("preview_source_applies_orientation").value):
+            cam0_orientation = 0
+            cam1_orientation = 0
+        else:
+            cam0_orientation = self._camera_orientation_for_index(cam0_idx)
+            cam1_orientation = self._camera_orientation_for_index(cam1_idx)
         msg0, msg1, _rx0, _rx1 = self._latest_stream_snapshot()
 
         if self._relay_pub0 is not None and msg0 is not None:
@@ -2051,6 +2060,24 @@ class CaptureService(Node):
             _safe_float(self.get_parameter("deblur_max_integration_gap_ms").value, 25.0),
         )
         max_step_ms = float(max_step_s * 1000.0)
+        exceeds_gap = bool(max_gap_limit_ms > 0.0 and max_step_ms > max_gap_limit_ms)
+        if exceeds_gap:
+            out.update(
+                {
+                    "ok": False,
+                    "status": "integration_gap_exceeded",
+                    "gyro_samples_used": int(len(dedup)),
+                    "gyro_samples_inside_exposure": int(max(0, inside_end - inside_start)),
+                    "gyro_time_min": _ns_to_stamp_str(dedup[0][0]),
+                    "gyro_time_max": _ns_to_stamp_str(dedup[-1][0]),
+                    "duration_ms": float((t1_ns - t0_ns) / 1_000_000.0),
+                    "max_step_ms": max_step_ms,
+                    "max_step_limit_ms": float(max_gap_limit_ms),
+                    "max_step_exceeds_limit": True,
+                    "delta_theta_rad": [float(dtheta_x), float(dtheta_y), float(dtheta_z)],
+                }
+            )
+            return out
         out.update(
             {
                 "ok": True,
@@ -2062,7 +2089,7 @@ class CaptureService(Node):
                 "duration_ms": float((t1_ns - t0_ns) / 1_000_000.0),
                 "max_step_ms": max_step_ms,
                 "max_step_limit_ms": float(max_gap_limit_ms),
-                "max_step_exceeds_limit": bool(max_gap_limit_ms > 0.0 and max_step_ms > max_gap_limit_ms),
+                "max_step_exceeds_limit": False,
                 "delta_theta_rad": [float(dtheta_x), float(dtheta_y), float(dtheta_z)],
             }
         )
@@ -2699,6 +2726,8 @@ class CaptureService(Node):
         fmt = str(self.get_parameter("preview_format").value).strip()
         role = str(self.get_parameter("preview_role").value)
         orientation = self._camera_orientation_for_index(cam_index)
+        if not bool(self.get_parameter("preview_source_applies_orientation").value):
+            orientation = 0
         frame_us = int(1_000_000 / max(1, fps))
 
         params = {
@@ -3325,12 +3354,14 @@ class CaptureService(Node):
         if feedback_cb is not None:
             feedback_cb("encoding_stream_frames")
 
+        source_applies_orientation = bool(self.get_parameter("preview_source_applies_orientation").value)
         try:
             frame0 = self._imgmsg_to_bgr(msg0)
-            frame0 = _apply_orientation_bgr(
-                frame0,
-                self._camera_orientation_for_index(int(self.get_parameter("cam0_index").value)),
-            )
+            if not source_applies_orientation:
+                frame0 = _apply_orientation_bgr(
+                    frame0,
+                    self._camera_orientation_for_index(int(self.get_parameter("cam0_index").value)),
+                )
         except Exception as e:
             fail_msg = f"CAPTURE FAILED (stream mode): cam0 conversion failed: {e}"
             self.get_logger().error(fail_msg)
@@ -3367,10 +3398,11 @@ class CaptureService(Node):
         if msg1 is not None:
             try:
                 frame1 = self._imgmsg_to_bgr(msg1)
-                frame1 = _apply_orientation_bgr(
-                    frame1,
-                    self._camera_orientation_for_index(int(self.get_parameter("cam1_index").value)),
-                )
+                if not source_applies_orientation:
+                    frame1 = _apply_orientation_bgr(
+                        frame1,
+                        self._camera_orientation_for_index(int(self.get_parameter("cam1_index").value)),
+                    )
             except Exception as e:
                 fail_msg = f"CAPTURE FAILED (stream mode): cam1 conversion failed: {e}"
                 self.get_logger().error(fail_msg)

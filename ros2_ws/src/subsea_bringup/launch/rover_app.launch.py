@@ -53,6 +53,7 @@ def generate_launch_description():
     swap_preview_feeds = LaunchConfiguration('swap_preview_feeds')
     cam0_orientation = LaunchConfiguration('cam0_orientation')
     cam1_orientation = LaunchConfiguration('cam1_orientation')
+    preview_source_applies_orientation = LaunchConfiguration('preview_source_applies_orientation')
     ui_fps = LaunchConfiguration('ui_fps')
     odom_local_topic = LaunchConfiguration('odom_local_topic')
     odom_global_topic = LaunchConfiguration('odom_global_topic')
@@ -96,6 +97,7 @@ def generate_launch_description():
     preview_ui_fps_int = ParameterValue(preview_ui_fps, value_type=int)
     cam0_orientation_int = ParameterValue(cam0_orientation, value_type=int)
     cam1_orientation_int = ParameterValue(cam1_orientation, value_type=int)
+    preview_source_applies_orientation_bool = ParameterValue(preview_source_applies_orientation, value_type=bool)
     ui_fps_int = ParameterValue(ui_fps, value_type=int)
     trajectory_sample_rate_hz_float = ParameterValue(trajectory_sample_rate_hz, value_type=float)
     trajectory_window_ms_float = ParameterValue(trajectory_window_ms, value_type=float)
@@ -355,6 +357,7 @@ def generate_launch_description():
             'preview_fps': preview_fps_int,
             'cam0_orientation': cam0_orientation_int,
             'cam1_orientation': cam1_orientation_int,
+            'preview_source_applies_orientation': preview_source_applies_orientation_bool,
             'preview_relay_enable': True,
             'preview_relay_width': preview_ui_w_int,
             'preview_relay_height': preview_ui_h_int,
@@ -457,6 +460,7 @@ def generate_launch_description():
         DeclareLaunchArgument('swap_preview_feeds', default_value='false'),
         DeclareLaunchArgument('cam0_orientation', default_value='0'),
         DeclareLaunchArgument('cam1_orientation', default_value='0'),
+        DeclareLaunchArgument('preview_source_applies_orientation', default_value='true'),
         DeclareLaunchArgument('ui_fps', default_value='15'),
         DeclareLaunchArgument('odom_local_topic', default_value='/odometry/local'),
         DeclareLaunchArgument('odom_global_topic', default_value='/odometry/global'),

@@ -19,6 +19,8 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.action import ActionServer, GoalResponse, CancelResponse
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from builtin_interfaces.msg import Time as TimeMsg
 
@@ -167,6 +169,41 @@ def _has_camera_device_hint(devs: List[str]) -> bool:
         if p.startswith("/dev/video") or p.startswith("/dev/media"):
             return True
     return False
+
+
+def _reliability_name(policy: ReliabilityPolicy) -> str:
+    if policy == ReliabilityPolicy.BEST_EFFORT:
+        return "best_effort"
+    if policy == ReliabilityPolicy.RELIABLE:
+        return "reliable"
+    return "system_default"
+
+
+def _parse_reliability_policy(
+    value: Any,
+    default: ReliabilityPolicy,
+    *,
+    logger=None,
+    param_name: str = "",
+) -> ReliabilityPolicy:
+    text = str(value).strip().lower().replace("-", "_")
+    mapping = {
+        "best_effort": ReliabilityPolicy.BEST_EFFORT,
+        "besteffort": ReliabilityPolicy.BEST_EFFORT,
+        "reliable": ReliabilityPolicy.RELIABLE,
+        "system_default": ReliabilityPolicy.SYSTEM_DEFAULT,
+        "default": ReliabilityPolicy.SYSTEM_DEFAULT,
+    }
+    out = mapping.get(text)
+    if out is not None:
+        return out
+    if logger is not None:
+        suffix = f" for {param_name}" if param_name else ""
+        logger.warn(
+            f"Invalid QoS reliability{suffix}={value!r}; "
+            f"using '{_reliability_name(default)}'"
+        )
+    return default
 
 
 def _sanitize_preview_ld_library_path(ld_path: str) -> str:
@@ -367,6 +404,7 @@ class CaptureService(Node):
         self.declare_parameter("stream_pair_max_delta_ms", 80.0)
         self.declare_parameter("write_capture_metadata", True)
         self.declare_parameter("sensor_buffer_s", 20.0)
+        self.declare_parameter("sensor_buffer_max_samples", 12000)
         self.declare_parameter("trajectory_sample_rate_hz", 100.0)
         self.declare_parameter("trajectory_window_ms", 1000.0)
         self.declare_parameter("write_trajectory_csv", True)
@@ -425,6 +463,8 @@ class CaptureService(Node):
         self.declare_parameter("sanitize_preview_env", True)
         self.declare_parameter("gnss_fix_topic", "/fix")
         self.declare_parameter("gnss_time_ref_topic", "/time_reference")
+        self.declare_parameter("gnss_fix_qos_reliability", "best_effort")
+        self.declare_parameter("gnss_time_ref_qos_reliability", "best_effort")
         self.declare_parameter("gnss_imu_topic", "/imu/data")
         self.declare_parameter("odom_local_topic", "/odometry/local")
         self.declare_parameter("odom_global_topic", "/odometry/global")
@@ -496,11 +536,12 @@ class CaptureService(Node):
         self._buf_cam1: Deque[StreamFrame] = deque(maxlen=stream_len)
 
         self._sensor_lock = threading.Lock()
-        self._buf_fix: Deque[NavSatFix] = deque()
-        self._buf_time_ref: Deque[TimeReference] = deque()
-        self._buf_imu: Deque[Imu] = deque()
-        self._buf_odom_local: Deque[Odometry] = deque()
-        self._buf_odom_global: Deque[Odometry] = deque()
+        self._sensor_max_samples = max(200, int(self.get_parameter("sensor_buffer_max_samples").value))
+        self._buf_fix: Deque[NavSatFix] = deque(maxlen=self._sensor_max_samples)
+        self._buf_time_ref: Deque[TimeReference] = deque(maxlen=self._sensor_max_samples)
+        self._buf_imu: Deque[Imu] = deque(maxlen=self._sensor_max_samples)
+        self._buf_odom_local: Deque[Odometry] = deque(maxlen=self._sensor_max_samples)
+        self._buf_odom_global: Deque[Odometry] = deque(maxlen=self._sensor_max_samples)
         self._sensor_keep_s = max(2.0, float(self.get_parameter("sensor_buffer_s").value))
         self._sensor_trim_period_s = 0.25
         self._next_sensor_trim_mono = 0.0
@@ -524,14 +565,43 @@ class CaptureService(Node):
         )
         self._gpio_capture_thread = None
 
+        # Separate callback groups so long capture handlers don't starve sensor streams.
+        self._stream_cb_group = ReentrantCallbackGroup()
+        self._timer_cb_group = ReentrantCallbackGroup()
+        self._capture_cb_group = MutuallyExclusiveCallbackGroup()
+
         img_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=2,
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
         )
-        # Keep GNSS/odom on RELIABLE to match upstream publishers like gpsd_client/robot_localization.
-        sens_qos_reliable = QoSProfile(
+        fix_rel = _parse_reliability_policy(
+            self.get_parameter("gnss_fix_qos_reliability").value,
+            ReliabilityPolicy.BEST_EFFORT,
+            logger=self.get_logger(),
+            param_name="gnss_fix_qos_reliability",
+        )
+        time_ref_rel = _parse_reliability_policy(
+            self.get_parameter("gnss_time_ref_qos_reliability").value,
+            ReliabilityPolicy.BEST_EFFORT,
+            logger=self.get_logger(),
+            param_name="gnss_time_ref_qos_reliability",
+        )
+        sens_qos_fix = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=fix_rel,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        sens_qos_time_ref = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=time_ref_rel,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        # Keep odometry on RELIABLE to match robot_localization defaults.
+        sens_qos_odom = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
             reliability=ReliabilityPolicy.RELIABLE,
@@ -557,8 +627,20 @@ class CaptureService(Node):
         ui_t1 = str(self.get_parameter("ui_cam1_topic").value).strip()
         self._ui_cam0_topic = self._ui_topic(ns0, ui_n0, ui_t0)
         self._ui_cam1_topic = self._ui_topic(ns1, ui_n1, ui_t1)
-        self._cam0_sub = self.create_subscription(Image, self._stream_cam0_topic, self._on_cam0_image, img_qos)
-        self._cam1_sub = self.create_subscription(Image, self._stream_cam1_topic, self._on_cam1_image, img_qos)
+        self._cam0_sub = self.create_subscription(
+            Image,
+            self._stream_cam0_topic,
+            self._on_cam0_image,
+            img_qos,
+            callback_group=self._stream_cb_group,
+        )
+        self._cam1_sub = self.create_subscription(
+            Image,
+            self._stream_cam1_topic,
+            self._on_cam1_image,
+            img_qos,
+            callback_group=self._stream_cb_group,
+        )
         self.get_logger().info(
             f"Stream capture subscribers: cam0={self._stream_cam0_topic} cam1={self._stream_cam1_topic}"
         )
@@ -576,36 +658,47 @@ class CaptureService(Node):
             NavSatFix,
             fix_topic,
             self._on_fix,
-            sens_qos_reliable,
+            sens_qos_fix,
+            callback_group=self._stream_cb_group,
         )
         self._time_ref_sub = self.create_subscription(
             TimeReference,
             time_ref_topic,
             self._on_time_ref,
-            sens_qos_reliable,
+            sens_qos_time_ref,
+            callback_group=self._stream_cb_group,
         )
         self._imu_sub = self.create_subscription(
             Imu,
             imu_topic,
             self._on_imu,
             sens_qos_best_effort,
+            callback_group=self._stream_cb_group,
         )
         self._odom_local_sub = self.create_subscription(
             Odometry,
             odom_local_topic,
             self._on_odom_local,
-            sens_qos_reliable,
+            sens_qos_odom,
+            callback_group=self._stream_cb_group,
         )
         self._odom_global_sub = self.create_subscription(
             Odometry,
             odom_global_topic,
             self._on_odom_global,
-            sens_qos_reliable,
+            sens_qos_odom,
+            callback_group=self._stream_cb_group,
         )
         self.get_logger().info(
             "Telemetry subscribers: "
             f"fix={fix_topic} time_ref={time_ref_topic} imu={imu_topic} "
             f"odom_local={odom_local_topic} odom_global={odom_global_topic}"
+        )
+        self.get_logger().info(
+            "Telemetry QoS reliability: "
+            f"fix={_reliability_name(fix_rel)} "
+            f"time_ref={_reliability_name(time_ref_rel)} "
+            "imu=best_effort odom=reliable"
         )
         event_topic = str(self.get_parameter("capture_event_topic").value)
         self._capture_evt_pub = self.create_publisher(String, event_topic, 10)
@@ -614,14 +707,20 @@ class CaptureService(Node):
         self._capture_dbg_pub = self.create_publisher(String, debug_topic, 10)
         self.get_logger().info(f"Capture debug publisher: {debug_topic}")
 
-        self.srv = self.create_service(CapturePair, "capture_pair", self.on_capture)
+        self.srv = self.create_service(
+            CapturePair,
+            "capture_pair",
+            self.on_capture,
+            callback_group=self._capture_cb_group,
+        )
         self.action = ActionServer(
             self,
             CapturePairAction,
             "capture_pair",
-            execute_callback=self.on_capture_action,
             goal_callback=self.on_capture_goal,
             cancel_callback=self.on_capture_cancel,
+            execute_callback=self.on_capture_action,
+            callback_group=self._capture_cb_group,
         )
         self.get_logger().info("Capture service ready: /capture_pair")
         self.get_logger().info("Capture action ready: /capture_pair")
@@ -674,6 +773,7 @@ class CaptureService(Node):
         restart_reasons: List[str] = []
         relay_reasons: List[str] = []
         sensor_keep_s: Optional[float] = None
+        sensor_max_samples: Optional[int] = None
         for p in params:
             if p.name == "preview_fps":
                 try:
@@ -748,14 +848,30 @@ class CaptureService(Node):
                 except Exception:
                     return SetParametersResult(successful=False, reason="sensor_buffer_s must be a number")
                 sensor_keep_s = max(2.0, v)
+            elif p.name == "sensor_buffer_max_samples":
+                try:
+                    v = int(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="sensor_buffer_max_samples must be an integer")
+                if v < 200:
+                    return SetParametersResult(successful=False, reason="sensor_buffer_max_samples must be >= 200")
+                sensor_max_samples = v
 
         if restart_reasons:
             self._request_preview_reconfigure(", ".join(restart_reasons))
         if relay_reasons:
             self._restart_preview_relay(", ".join(relay_reasons))
-        if sensor_keep_s is not None:
+        if sensor_keep_s is not None or sensor_max_samples is not None:
             with self._sensor_lock:
-                self._sensor_keep_s = sensor_keep_s
+                if sensor_keep_s is not None:
+                    self._sensor_keep_s = sensor_keep_s
+                if sensor_max_samples is not None and sensor_max_samples != self._sensor_max_samples:
+                    self._sensor_max_samples = sensor_max_samples
+                    self._buf_fix = deque(self._buf_fix, maxlen=self._sensor_max_samples)
+                    self._buf_time_ref = deque(self._buf_time_ref, maxlen=self._sensor_max_samples)
+                    self._buf_imu = deque(self._buf_imu, maxlen=self._sensor_max_samples)
+                    self._buf_odom_local = deque(self._buf_odom_local, maxlen=self._sensor_max_samples)
+                    self._buf_odom_global = deque(self._buf_odom_global, maxlen=self._sensor_max_samples)
                 self._next_sensor_trim_mono = 0.0
                 self._trim_sensor_buffers_locked(force=True)
         return SetParametersResult(successful=True, reason="")
@@ -860,7 +976,11 @@ class CaptureService(Node):
         if not bool(self.get_parameter("preview_watchdog_enable").value):
             return
         period_s = max(0.2, float(self.get_parameter("preview_watchdog_period_s").value))
-        self._preview_watchdog_timer = self.create_timer(period_s, self._preview_watchdog_cb)
+        self._preview_watchdog_timer = self.create_timer(
+            period_s,
+            self._preview_watchdog_cb,
+            callback_group=self._timer_cb_group,
+        )
         self.get_logger().info(f"Preview watchdog enabled: period={period_s:.2f}s")
 
     def _stop_preview_watchdog(self) -> None:
@@ -1002,7 +1122,11 @@ class CaptureService(Node):
         self._relay_height = max(64, int(self.get_parameter("preview_relay_height").value))
         self._relay_last_cam0_msg_id = None
         self._relay_last_cam1_msg_id = None
-        self._relay_timer = self.create_timer(1.0 / float(fps), self._publish_preview_relay)
+        self._relay_timer = self.create_timer(
+            1.0 / float(fps),
+            self._publish_preview_relay,
+            callback_group=self._timer_cb_group,
+        )
         self.get_logger().info(
             f"Preview relay enabled: fps={fps} topics={' | '.join(pub_topics)}"
         )
@@ -1228,7 +1352,11 @@ class CaptureService(Node):
         self._gpio_prev_pressed = bool(initial_pressed) if initial_pressed is not None else False
         self._gpio_pressed_since_mono = time.monotonic() if self._gpio_prev_pressed else None
         self._gpio_last_trigger_mono = 0.0
-        self._gpio_timer = self.create_timer(poll_ms / 1000.0, self._gpio_poll_cb)
+        self._gpio_timer = self.create_timer(
+            poll_ms / 1000.0,
+            self._gpio_poll_cb,
+            callback_group=self._timer_cb_group,
+        )
         self.get_logger().info(
             f"GPIO trigger enabled: chip={chip_name} line={line_offset} "
             f"active_low={active_low} poll_ms={poll_ms} "
@@ -1452,16 +1580,21 @@ class CaptureService(Node):
         self._next_sensor_trim_mono = now_m + self._sensor_trim_period_s
         cutoff_ns = _stamp_to_ns(now_ros_time(self)) - int(self._sensor_keep_s * 1_000_000_000)
 
-        while self._buf_fix and _stamp_to_ns(self._buf_fix[0].header.stamp) < cutoff_ns:
-            self._buf_fix.popleft()
-        while self._buf_time_ref and _stamp_to_ns(self._buf_time_ref[0].header.stamp) < cutoff_ns:
-            self._buf_time_ref.popleft()
-        while self._buf_imu and _stamp_to_ns(self._buf_imu[0].header.stamp) < cutoff_ns:
-            self._buf_imu.popleft()
-        while self._buf_odom_local and _stamp_to_ns(self._buf_odom_local[0].header.stamp) < cutoff_ns:
-            self._buf_odom_local.popleft()
-        while self._buf_odom_global and _stamp_to_ns(self._buf_odom_global[0].header.stamp) < cutoff_ns:
-            self._buf_odom_global.popleft()
+        def _keep_recent(buf: Deque[Any]) -> Deque[Any]:
+            if not buf:
+                return buf
+            kept = [m for m in buf if _stamp_to_ns(m.header.stamp) >= cutoff_ns]
+            if len(kept) == len(buf):
+                return buf
+            return deque(kept, maxlen=buf.maxlen)
+
+        # Filter entire deques, not only the head, so out-of-order timestamps
+        # cannot keep stale samples indefinitely.
+        self._buf_fix = _keep_recent(self._buf_fix)
+        self._buf_time_ref = _keep_recent(self._buf_time_ref)
+        self._buf_imu = _keep_recent(self._buf_imu)
+        self._buf_odom_local = _keep_recent(self._buf_odom_local)
+        self._buf_odom_global = _keep_recent(self._buf_odom_global)
 
     def _on_fix(self, msg: NavSatFix) -> None:
         with self._sensor_lock:
@@ -2659,7 +2792,11 @@ class CaptureService(Node):
         self._fallback_data = bytes(w * h * 3)
 
         period = 1.0 / float(fps)
-        self._fallback_timer = self.create_timer(period, self._publish_black_previews)
+        self._fallback_timer = self.create_timer(
+            period,
+            self._publish_black_previews,
+            callback_group=self._timer_cb_group,
+        )
         topics = []
         if self._fallback_pub0 is not None:
             topics.append(self._ui_cam0_topic)
@@ -3590,11 +3727,17 @@ class CaptureService(Node):
 def main():
     rclpy.init()
     node = CaptureService()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
+        try:
+            executor.shutdown()
+        except Exception:
+            pass
         # Ensure we don't leave camera processes behind if we own them.
         try:
             node._stop_preview_watchdog()

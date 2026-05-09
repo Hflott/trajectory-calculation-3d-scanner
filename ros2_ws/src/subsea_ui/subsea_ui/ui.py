@@ -584,6 +584,17 @@ class AppNode(Node):
         params = [Parameter("preview_relay_fps", Parameter.Type.INTEGER, int(max(1, fps)))]
         return self._capture_params.set_parameters(params)
 
+    def set_capture_output_dir_async(self, out_dir: str):
+        # Best-effort: if capture node parameter service is unavailable, continue silently.
+        try:
+            ready = self._capture_params.services_are_ready()
+        except Exception:
+            ready = False
+        if not ready:
+            return None
+        params = [Parameter("gpio_trigger_output_dir", Parameter.Type.STRING, str(out_dir or ""))]
+        return self._capture_params.set_parameters(params)
+
     def session_topics(self) -> List[str]:
         raw = str(self.get_parameter("session_bag_topics").value or "").strip()
         topics = [t.strip() for t in raw.split() if t.strip()]
@@ -689,6 +700,7 @@ class MainWindow(QWidget):
         self._session_active = False
         self._session_id: Optional[str] = None
         self._session_dir: Optional[str] = None
+        self._session_capture_dir: Optional[str] = None
         self._session_bag_dir: Optional[str] = None
         self._session_manifest_path: Optional[str] = None
         self._session_start_mono: Optional[float] = None
@@ -1105,6 +1117,14 @@ class MainWindow(QWidget):
         self.setMinimumSize(460, 320)
 
         os.makedirs(self.out_dir, exist_ok=True)
+        # Align GPIO-trigger captures with configured output root on startup.
+        QTimer.singleShot(
+            1000,
+            lambda: self._apply_capture_output_dir_to_capture_node(
+                self._effective_capture_output_dir(),
+                "startup",
+            ),
+        )
 
         # Preview refresh (UI-side). Actual camera FPS is independent.
         self.timer = QTimer(self)
@@ -1445,7 +1465,7 @@ class MainWindow(QWidget):
             "start_utc": self._session_start_utc,
             "end_utc": _utc_ts() if state != "running" else None,
             "duration_s": self._session_duration_s() if state != "running" else None,
-            "capture_output_dir": self.out_dir,
+            "capture_output_dir": self._effective_capture_output_dir(),
             "bag_dir": self._session_bag_dir,
             "topics": self.ros_node.session_topics(),
             "gnss_lock_required": bool(self._require_gnss_lock_for_session),
@@ -1467,6 +1487,45 @@ class MainWindow(QWidget):
     def _session_root_dir(self) -> str:
         return os.path.join(self.out_dir, "sessions")
 
+    def _effective_capture_output_dir(self) -> str:
+        if self._session_capture_dir:
+            return self._session_capture_dir
+        return self.out_dir
+
+    def _apply_capture_output_dir_to_capture_node(self, out_dir: str, context: str) -> None:
+        target = str(out_dir or "").strip()
+        if target:
+            try:
+                os.makedirs(target, exist_ok=True)
+            except Exception as e:
+                self._log(f"Capture output dir create failed ({context}): {target}: {e}")
+                return
+        fut = self.ros_node.set_capture_output_dir_async(target)
+        if fut is None:
+            self._log(
+                f"Capture output dir update skipped ({context}): "
+                "capture node parameter service not ready"
+            )
+            return
+
+        def _done(f):
+            try:
+                r = f.result()
+                if r and bool(r[0].successful):
+                    self._log(f"Capture output dir set ({context}): {target or '(default)'}")
+                else:
+                    reason = ""
+                    if r and len(r) > 0:
+                        reason = str(getattr(r[0], "reason", ""))
+                    self._log(
+                        f"Capture output dir update rejected ({context}): "
+                        f"{reason or 'unknown reason'}"
+                    )
+            except Exception as e:
+                self._log(f"Capture output dir update failed ({context}): {e}")
+
+        fut.add_done_callback(_done)
+
     def _start_session(self) -> None:
         if self._session_active:
             return
@@ -1486,7 +1545,9 @@ class MainWindow(QWidget):
         session_day_dir = now.strftime("%Y/%m/%d")
         session_dir = os.path.join(self._session_root_dir(), session_day_dir, session_id)
         bag_dir = os.path.join(session_dir, "bag")
+        capture_dir = os.path.join(session_dir, "captures")
         os.makedirs(session_dir, exist_ok=True)
+        os.makedirs(capture_dir, exist_ok=True)
 
         bag_log_path = os.path.join(session_dir, "rosbag_record.log")
         manifest_path = os.path.join(session_dir, "session_manifest.json")
@@ -1525,6 +1586,7 @@ class MainWindow(QWidget):
         self._session_active = True
         self._session_id = session_id
         self._session_dir = session_dir
+        self._session_capture_dir = capture_dir
         self._session_bag_dir = bag_dir
         self._session_manifest_path = manifest_path
         self._session_start_mono = time.monotonic()
@@ -1539,6 +1601,8 @@ class MainWindow(QWidget):
         self._log(f"Session started: id={session_id}")
         self._log(f"Bag topics: {' '.join(topics)}")
         self._log(f"Bag dir: {bag_dir}")
+        self._log(f"Capture dir: {capture_dir}")
+        self._apply_capture_output_dir_to_capture_node(capture_dir, "session_start")
         self._write_session_manifest(self._session_manifest_data(state="running"))
 
     def _stop_session(self, reason: str = "user_stop") -> None:
@@ -1576,6 +1640,8 @@ class MainWindow(QWidget):
                 pass
 
         self._write_session_manifest(self._session_manifest_data(state="stopped", reason=reason, return_code=rc))
+        self._session_capture_dir = None
+        self._apply_capture_output_dir_to_capture_node(self.out_dir, "session_stop")
 
         sid = self._session_id or "session"
         self._log(f"Session stopped: id={sid} reason={reason} return_code={rc}")
@@ -2095,6 +2161,10 @@ class MainWindow(QWidget):
         save_config(cfg)
         self.status.setText("Status: settings saved")
         self._log("Settings saved")
+        self._apply_capture_output_dir_to_capture_node(
+            self._effective_capture_output_dir(),
+            "settings_save",
+        )
 
         # Apply UI FPS immediately
         self.timer.setInterval(max(10, int(1000 / self.ui_fps)))

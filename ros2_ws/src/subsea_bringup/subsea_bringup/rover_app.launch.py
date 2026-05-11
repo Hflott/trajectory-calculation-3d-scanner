@@ -71,6 +71,8 @@ def generate_launch_description():
     deblur_min_kernel_px = LaunchConfiguration('deblur_min_kernel_px')
     deblur_max_kernel_px = LaunchConfiguration('deblur_max_kernel_px')
     deblur_iterations = LaunchConfiguration('deblur_iterations')
+    deblur_method = LaunchConfiguration('deblur_method')
+    deblur_wiener_snr = LaunchConfiguration('deblur_wiener_snr')
     deblur_allow_nearest_fallback = LaunchConfiguration('deblur_allow_nearest_fallback')
     deblur_max_integration_gap_ms = LaunchConfiguration('deblur_max_integration_gap_ms')
     deblur_require_time_reference = LaunchConfiguration('deblur_require_time_reference')
@@ -110,6 +112,7 @@ def generate_launch_description():
     deblur_min_kernel_px_float = ParameterValue(deblur_min_kernel_px, value_type=float)
     deblur_max_kernel_px_int = ParameterValue(deblur_max_kernel_px, value_type=int)
     deblur_iterations_int = ParameterValue(deblur_iterations, value_type=int)
+    deblur_wiener_snr_float = ParameterValue(deblur_wiener_snr, value_type=float)
     deblur_allow_nearest_fallback_bool = ParameterValue(deblur_allow_nearest_fallback, value_type=bool)
     deblur_max_integration_gap_ms_float = ParameterValue(deblur_max_integration_gap_ms, value_type=float)
     deblur_require_time_reference_bool = ParameterValue(deblur_require_time_reference, value_type=bool)
@@ -340,6 +343,8 @@ def generate_launch_description():
             'deblur_min_kernel_px': deblur_min_kernel_px_float,
             'deblur_max_kernel_px': deblur_max_kernel_px_int,
             'deblur_iterations': deblur_iterations_int,
+            'deblur_method': deblur_method,
+            'deblur_wiener_snr': deblur_wiener_snr_float,
             'deblur_allow_nearest_fallback': deblur_allow_nearest_fallback_bool,
             'deblur_max_integration_gap_ms': deblur_max_integration_gap_ms_float,
             'deblur_require_time_reference': deblur_require_time_reference_bool,
@@ -478,6 +483,10 @@ def generate_launch_description():
         DeclareLaunchArgument('deblur_min_kernel_px', default_value='1.2'),
         DeclareLaunchArgument('deblur_max_kernel_px', default_value='31'),
         DeclareLaunchArgument('deblur_iterations', default_value='12'),
+        DeclareLaunchArgument('deblur_method', default_value='richardson_lucy',
+                              description='Deblur algorithm: richardson_lucy or wiener'),
+        DeclareLaunchArgument('deblur_wiener_snr', default_value='40.0',
+                              description='Wiener SNR (power ratio, higher=sharper). Only used when deblur_method=wiener'),
         DeclareLaunchArgument('deblur_allow_nearest_fallback', default_value='false'),
         DeclareLaunchArgument('deblur_max_integration_gap_ms', default_value='25.0'),
         DeclareLaunchArgument('deblur_require_time_reference', default_value='true'),

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import math
-from typing import Optional, Tuple
+import threading
+import time
+from typing import Any, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -24,6 +26,8 @@ class Bno085ImuNode(Node):
         self.declare_parameter("orientation_covariance", 0.05)
         self.declare_parameter("angular_velocity_covariance", 0.02)
         self.declare_parameter("linear_acceleration_covariance", 0.1)
+        self.declare_parameter("use_driver_cached_reads", True)
+        self.declare_parameter("read_error_reset_threshold", 30)
 
         self._imu_topic = str(self.get_parameter("imu_topic").value)
         self._frame_id = str(self.get_parameter("frame_id").value)
@@ -41,6 +45,10 @@ class Bno085ImuNode(Node):
         self._cov_o = float(self.get_parameter("orientation_covariance").value)
         self._cov_w = float(self.get_parameter("angular_velocity_covariance").value)
         self._cov_a = float(self.get_parameter("linear_acceleration_covariance").value)
+        self._use_driver_cached_reads = bool(self.get_parameter("use_driver_cached_reads").value)
+        self._read_error_reset_threshold = max(
+            1, int(self.get_parameter("read_error_reset_threshold").value)
+        )
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -50,16 +58,39 @@ class Bno085ImuNode(Node):
         )
         self._pub = self.create_publisher(Imu, self._imu_topic, qos)
 
+        # All sensor state is protected by _sensor_lock so the read thread and
+        # the ROS executor reconnect timer never race on these fields.
+        self._sensor_lock = threading.Lock()
         self._sensor = None
         self._lib_error: Optional[str] = None
         self._last_warn = ""
         self._enabled_rotation = False
         self._enabled_accel = False
         self._enabled_gyro = False
+        self._read_error_count = 0
+        self._supports_cached_reads = False
+        self._bno_report_accel: Optional[int] = None
+        self._bno_report_gyro: Optional[int] = None
+        self._bno_report_rot: Optional[int] = None
 
+        self._stop_event = threading.Event()
         self._try_init_sensor()
+        # Periodic reconnect check runs in the ROS executor (low frequency, non-critical).
         self.create_timer(3.0, self._try_reconnect_if_needed)
-        self.create_timer(1.0 / self._rate_hz, self._publish_tick)
+        # Dedicated OS thread drives IMU reads at the target rate, bypassing ROS
+        # executor scheduling jitter that caps effective rate to ~30 Hz in Python.
+        self._read_thread = threading.Thread(
+            target=self._read_loop,
+            name="bno085_imu_read",
+            daemon=True,
+        )
+        self._read_thread.start()
+
+    def destroy_node(self) -> None:
+        self._stop_event.set()
+        if hasattr(self, "_read_thread") and self._read_thread.is_alive():
+            self._read_thread.join(timeout=2.0)
+        super().destroy_node()
 
     def _warn_once(self, text: str) -> None:
         if text != self._last_warn:
@@ -77,7 +108,8 @@ class Bno085ImuNode(Node):
             )
             from adafruit_bno08x.i2c import BNO08X_I2C
         except Exception as e:
-            self._sensor = None
+            with self._sensor_lock:
+                self._sensor = None
             self._lib_error = (
                 f"BNO085 Python libs not available ({e}). "
                 "Install on Pi: sudo pip3 install adafruit-blinka adafruit-circuitpython-bno08x"
@@ -102,39 +134,127 @@ class Bno085ImuNode(Node):
                 i2c_path = f"/dev/i2c-{self._i2c_bus}"
 
             sensor = BNO08X_I2C(i2c, address=self._addr)
+            bno_report_accel = int(BNO_REPORT_ACCELEROMETER)
+            bno_report_gyro = int(BNO_REPORT_GYROSCOPE)
+            bno_report_rot = int(BNO_REPORT_ROTATION_VECTOR)
             # Interval in microseconds expected by Adafruit API.
             interval_us = max(5_000, int(1_000_000.0 / self._rate_hz))
-            self._enabled_rotation = False
-            self._enabled_accel = False
-            self._enabled_gyro = False
+            enabled_rotation = False
+            enabled_accel = False
+            enabled_gyro = False
 
             if self._en_rot:
                 sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, interval_us)
-                self._enabled_rotation = True
+                enabled_rotation = True
             if self._en_acc:
                 sensor.enable_feature(BNO_REPORT_ACCELEROMETER, interval_us)
-                self._enabled_accel = True
+                enabled_accel = True
             if self._en_gyr:
                 sensor.enable_feature(BNO_REPORT_GYROSCOPE, interval_us)
-                self._enabled_gyro = True
+                enabled_gyro = True
 
-            self._sensor = sensor
+            supports_cached = bool(
+                self._use_driver_cached_reads
+                and hasattr(sensor, "_process_available_packets")
+                and hasattr(sensor, "_readings")
+            )
+            # Write all fields atomically; assign _sensor last so the read thread
+            # only picks up a fully-configured sensor object.
+            with self._sensor_lock:
+                self._bno_report_accel = bno_report_accel
+                self._bno_report_gyro = bno_report_gyro
+                self._bno_report_rot = bno_report_rot
+                self._enabled_rotation = enabled_rotation
+                self._enabled_accel = enabled_accel
+                self._enabled_gyro = enabled_gyro
+                self._supports_cached_reads = supports_cached
+                self._read_error_count = 0
+                self._sensor = sensor
+
             self.get_logger().info(
                 f"BNO085 ready on I2C {i2c_path} address 0x{self._addr:02X}; "
-                f"features: rot={self._enabled_rotation} acc={self._enabled_accel} gyro={self._enabled_gyro}; "
+                f"features: rot={enabled_rotation} acc={enabled_accel} gyro={enabled_gyro}; "
                 f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz "
+                f"(cached_reads={supports_cached}) "
                 f"(timestamp_mode={self._stamp_mode})"
             )
+            if self._rate_hz >= 50.0:
+                self.get_logger().info(
+                    "Tip: for reliable high-rate I2C add "
+                    "'dtparam=i2c_arm_baudrate=400000' to /boot/firmware/config.txt and reboot. "
+                    "Default 100 kHz bus limits sustainable read rate to ~30 Hz."
+                )
         except Exception as e:
-            self._sensor = None
+            with self._sensor_lock:
+                self._sensor = None
+                self._supports_cached_reads = False
             self._warn_once(
                 f"BNO085 init failed on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {e} "
                 f"(check wiring and i2cdetect -y -r {self._i2c_bus})"
             )
 
     def _try_reconnect_if_needed(self) -> None:
-        if self._sensor is None:
+        with self._sensor_lock:
+            needs_reconnect = self._sensor is None
+        if needs_reconnect:
             self._try_init_sensor()
+
+    def _read_loop(self) -> None:
+        """Dedicated OS thread: reads IMU and publishes at _rate_hz without executor jitter."""
+        period_s = 1.0 / self._rate_hz
+        deadline = time.perf_counter() + period_s
+        while not self._stop_event.is_set():
+            self._publish_tick()
+            now = time.perf_counter()
+            remaining = deadline - now
+            deadline += period_s
+            # If we fell badly behind (long I2C stall), reset rather than spinning to catch up.
+            if remaining < -2.0 * period_s:
+                deadline = now + period_s
+            elif remaining > 0.001:
+                # Sleep leaving ~1 ms margin for OS wakeup latency.
+                time.sleep(remaining - 0.001)
+
+    def _read_sensor_values(
+        self,
+        sensor: Any,
+        supports_cached: bool,
+        enabled_rotation: bool,
+        enabled_accel: bool,
+        enabled_gyro: bool,
+        bno_report_rot: Optional[int],
+        bno_report_gyro: Optional[int],
+        bno_report_accel: Optional[int],
+    ) -> Tuple[
+        Optional[Tuple[float, float, float, float]],
+        Optional[Tuple[float, float, float]],
+        Optional[Tuple[float, float, float]],
+    ]:
+        quat_raw: Any = None
+        gyro_raw: Any = None
+        accel_raw: Any = None
+
+        if supports_cached:
+            sensor._process_available_packets()
+            readings = getattr(sensor, "_readings", {})
+            if enabled_rotation and bno_report_rot is not None:
+                quat_raw = readings.get(bno_report_rot)
+            if enabled_gyro and bno_report_gyro is not None:
+                gyro_raw = readings.get(bno_report_gyro)
+            if enabled_accel and bno_report_accel is not None:
+                accel_raw = readings.get(bno_report_accel)
+        else:
+            if enabled_rotation:
+                quat_raw = sensor.quaternion
+            if enabled_gyro:
+                gyro_raw = sensor.gyro
+            if enabled_accel:
+                accel_raw = sensor.acceleration
+
+        quat = self._safe_quat(quat_raw) if quat_raw is not None else None
+        gyro = self._safe_triplet(gyro_raw) if gyro_raw is not None else None
+        accel = self._safe_triplet(accel_raw) if accel_raw is not None else None
+        return quat, gyro, accel
 
     def _safe_triplet(self, value) -> Optional[Tuple[float, float, float]]:
         try:
@@ -159,7 +279,18 @@ class Bno085ImuNode(Node):
             return None
 
     def _publish_tick(self) -> None:
-        if self._sensor is None:
+        # Snapshot all sensor-related state under the lock; I2C reads happen outside it.
+        with self._sensor_lock:
+            sensor = self._sensor
+            supports_cached = self._supports_cached_reads
+            enabled_rotation = self._enabled_rotation
+            enabled_accel = self._enabled_accel
+            enabled_gyro = self._enabled_gyro
+            bno_report_rot = self._bno_report_rot
+            bno_report_gyro = self._bno_report_gyro
+            bno_report_accel = self._bno_report_accel
+
+        if sensor is None:
             return
 
         msg = Imu()
@@ -173,64 +304,68 @@ class Bno085ImuNode(Node):
         msg.linear_acceleration_covariance[0] = -1.0
 
         try:
-            if self._enabled_rotation:
-                q = self._safe_quat(self._sensor.quaternion)
-                if q is not None:
-                    msg.orientation.x = q[0]
-                    msg.orientation.y = q[1]
-                    msg.orientation.z = q[2]
-                    msg.orientation.w = q[3]
-                    msg.orientation_covariance = [
-                        self._cov_o,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_o,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_o,
-                    ]
-
-            if self._enabled_gyro:
-                g = self._safe_triplet(self._sensor.gyro)
-                if g is not None:
-                    msg.angular_velocity.x = g[0]
-                    msg.angular_velocity.y = g[1]
-                    msg.angular_velocity.z = g[2]
-                    msg.angular_velocity_covariance = [
-                        self._cov_w,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_w,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_w,
-                    ]
-
-            if self._enabled_accel:
-                a = self._safe_triplet(self._sensor.acceleration)
-                if a is not None:
-                    msg.linear_acceleration.x = a[0]
-                    msg.linear_acceleration.y = a[1]
-                    msg.linear_acceleration.z = a[2]
-                    msg.linear_acceleration_covariance = [
-                        self._cov_a,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_a,
-                        0.0,
-                        0.0,
-                        0.0,
-                        self._cov_a,
-                    ]
+            q, g, a = self._read_sensor_values(
+                sensor, supports_cached,
+                enabled_rotation, enabled_accel, enabled_gyro,
+                bno_report_rot, bno_report_gyro, bno_report_accel,
+            )
         except Exception as e:
-            self._sensor = None
-            self._warn_once(f"BNO085 read error: {e}; will retry init")
+            with self._sensor_lock:
+                self._read_error_count += 1
+                error_count = self._read_error_count
+                if error_count >= self._read_error_reset_threshold:
+                    self._sensor = None
+                    self._supports_cached_reads = False
+            if error_count >= self._read_error_reset_threshold:
+                self._warn_once(
+                    f"BNO085 read error: {e}; reached {error_count} consecutive errors, "
+                    "resetting sensor and retrying init"
+                )
+            elif error_count in (1, 5, 10):
+                self.get_logger().warn(
+                    f"BNO085 transient read error ({error_count}/"
+                    f"{self._read_error_reset_threshold}): {e}"
+                )
             return
+        else:
+            with self._sensor_lock:
+                prev_count = self._read_error_count
+                self._read_error_count = 0
+            if prev_count:
+                self.get_logger().info(
+                    f"BNO085 read recovered after {prev_count} consecutive errors"
+                )
+
+        if enabled_rotation and q is not None:
+            msg.orientation.x = q[0]
+            msg.orientation.y = q[1]
+            msg.orientation.z = q[2]
+            msg.orientation.w = q[3]
+            msg.orientation_covariance = [
+                self._cov_o, 0.0, 0.0,
+                0.0, self._cov_o, 0.0,
+                0.0, 0.0, self._cov_o,
+            ]
+
+        if enabled_gyro and g is not None:
+            msg.angular_velocity.x = g[0]
+            msg.angular_velocity.y = g[1]
+            msg.angular_velocity.z = g[2]
+            msg.angular_velocity_covariance = [
+                self._cov_w, 0.0, 0.0,
+                0.0, self._cov_w, 0.0,
+                0.0, 0.0, self._cov_w,
+            ]
+
+        if enabled_accel and a is not None:
+            msg.linear_acceleration.x = a[0]
+            msg.linear_acceleration.y = a[1]
+            msg.linear_acceleration.z = a[2]
+            msg.linear_acceleration_covariance = [
+                self._cov_a, 0.0, 0.0,
+                0.0, self._cov_a, 0.0,
+                0.0, 0.0, self._cov_a,
+            ]
 
         if self._stamp_mode == "read_end":
             msg.header.stamp = self.get_clock().now().to_msg()

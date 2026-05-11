@@ -383,6 +383,36 @@ def _richardson_lucy_bgr(
     return np.clip(est * 255.0, 0.0, 255.0).astype(np.uint8)
 
 
+def _wiener_deconvolve_bgr(
+    img_bgr: np.ndarray,
+    psf: np.ndarray,
+    snr: float = 40.0,
+) -> np.ndarray:
+    """Wiener deconvolution via FFT — O(N log N), single pass, much faster than Richardson-Lucy.
+
+    snr is the assumed signal-to-noise ratio (power, not dB). Higher values sharpen more
+    aggressively; lower values are more conservative. Typical range: 10–200.
+    """
+    img = img_bgr.astype(np.float32) / 255.0
+    h, w = img.shape[:2]
+    ph, pw = psf.shape
+    # Embed PSF in a full-size plane and roll its centre to (0, 0) so that
+    # rfft2 treats it as a circularly-centred kernel (no phase offset).
+    psf_full = np.zeros((h, w), dtype=np.float32)
+    psf_full[:ph, :pw] = psf
+    psf_full = np.roll(np.roll(psf_full, -(ph // 2), axis=0), -(pw // 2), axis=1)
+    H = np.fft.rfft2(psf_full)
+    H_conj = np.conj(H)
+    # Wiener formula: F_est = (H* · G) / (|H|² + 1/SNR)
+    denom = (H_conj * H).real + (1.0 / max(1.0, float(snr)))
+    result = np.zeros_like(img)
+    for c in range(3):
+        G = np.fft.rfft2(img[:, :, c])
+        channel = np.fft.irfft2((H_conj * G) / denom, s=(h, w))
+        result[:, :, c] = np.clip(channel, 0.0, 1.0)
+    return np.clip(result * 255.0, 0.0, 255.0).astype(np.uint8)
+
+
 class CaptureService(Node):
     def __init__(self):
         super().__init__("capture_service")
@@ -418,6 +448,8 @@ class CaptureService(Node):
         self.declare_parameter("deblur_min_kernel_px", 1.2)
         self.declare_parameter("deblur_max_kernel_px", 31)
         self.declare_parameter("deblur_iterations", 12)
+        self.declare_parameter("deblur_method", "richardson_lucy")  # richardson_lucy|wiener
+        self.declare_parameter("deblur_wiener_snr", 40.0)
         self.declare_parameter("deblur_allow_nearest_fallback", False)
         self.declare_parameter("deblur_max_integration_gap_ms", 25.0)
         self.declare_parameter("deblur_require_time_reference", True)
@@ -2386,15 +2418,23 @@ class CaptureService(Node):
 
         max_kernel = max(3, int(self.get_parameter("deblur_max_kernel_px").value))
         iterations = int(info["rl_iterations"])
+        method = str(self.get_parameter("deblur_method").value).strip().lower()
         psf = _line_psf(length_px, angle_deg, max_kernel=max_kernel)
         try:
-            deblurred = _richardson_lucy_bgr(img, psf, iterations=iterations)
+            if method == "wiener":
+                snr = max(1.0, _safe_float(self.get_parameter("deblur_wiener_snr").value, 40.0))
+                deblurred = _wiener_deconvolve_bgr(img, psf, snr=snr)
+                info["wiener_snr"] = float(snr)
+                method_tag = "wiener_fft_line_psf"
+            else:
+                deblurred = _richardson_lucy_bgr(img, psf, iterations=iterations)
+                method_tag = "richardson_lucy_line_psf"
             ok, err = self._write_jpeg_bgr(out_path, deblurred, quality)
             if not ok:
                 info["status"] = f"write_failed: {err}"
                 return info
             info["status"] = "deblurred"
-            info["method"] = "richardson_lucy_line_psf"
+            info["method"] = method_tag
             info["iterations"] = int(iterations)
             return info
         except Exception as e:

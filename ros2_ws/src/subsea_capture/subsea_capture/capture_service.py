@@ -3272,19 +3272,21 @@ class CaptureService(Node):
             cmd.extend(["--hflip", "--vflip"])
         return cmd
 
-    def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str]:
+    def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str, Optional[TimeMsg]]:
         cmd = self._rpicam_cmd(cam_index, out_path, quality)
+        end_stamp: Optional[TimeMsg] = None
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=self._preview_env())
+            end_stamp = now_ros_time(self)
         except subprocess.TimeoutExpired:
-            return False, f"TimeoutExpired running: {' '.join(cmd)}"
+            return False, f"TimeoutExpired running: {' '.join(cmd)}", now_ros_time(self)
         except Exception as e:
-            return False, f"Failed running {' '.join(cmd)}: {e}"
+            return False, f"Failed running {' '.join(cmd)}: {e}", now_ros_time(self)
 
         ok = (p.returncode == 0) and os.path.exists(out_path) and os.path.getsize(out_path) > 0
         if ok:
-            return True, ""
-        return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n"
+            return True, "", end_stamp
+        return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n", end_stamp
 
     def _perform_capture_still(
         self,
@@ -3307,7 +3309,7 @@ class CaptureService(Node):
         cam0_path = os.path.join(out_dir, f"{session}_cam0.jpg")
         cam1_path = os.path.join(out_dir, f"{session}_cam1.jpg")
 
-        stamp = now_ros_time(self)
+        trigger_stamp = now_ros_time(self)
         self.get_logger().info(f"Capture session={session} -> {cam0_path}, {cam1_path}")
 
         pause_previews = bool(self.get_parameter("pause_previews").value)
@@ -3332,6 +3334,11 @@ class CaptureService(Node):
 
         ok0 = ok1 = False
         d0 = d1 = ""
+        # rpicam-still does not publish a hardware frame stamp here. Use the
+        # process completion time as the best available per-image approximation
+        # for metadata and IMU deblur alignment.
+        cam0_stamp: Optional[TimeMsg] = None
+        cam1_stamp: Optional[TimeMsg] = None
 
         cam_count = _libcamera_camera_count()
         self._detected_cam_count = cam_count
@@ -3349,32 +3356,45 @@ class CaptureService(Node):
                         p1 = subprocess.Popen(self._rpicam_cmd(cam1, cam1_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._preview_env())
                     try:
                         out0, err0 = p0.communicate(timeout=run_timeout_s)
+                        cam0_stamp = now_ros_time(self)
                     except subprocess.TimeoutExpired:
                         p0.kill()
                         out0, err0 = "", "TimeoutExpired"
+                        cam0_stamp = now_ros_time(self)
                     out1 = err1 = ""
                     if p1 is not None:
                         try:
                             out1, err1 = p1.communicate(timeout=run_timeout_s)
+                            cam1_stamp = now_ros_time(self)
                         except subprocess.TimeoutExpired:
                             p1.kill()
                             out1, err1 = "", "TimeoutExpired"
+                            cam1_stamp = now_ros_time(self)
 
                     ok0 = (p0.returncode == 0) and os.path.exists(cam0_path) and os.path.getsize(cam0_path) > 0
                     if allow_cam1 and p1 is not None:
                         ok1 = (p1.returncode == 0) and os.path.exists(cam1_path) and os.path.getsize(cam1_path) > 0
                     else:
                         ok1 = True
+                        cam1_stamp = None
                     if not ok0:
                         d0 = f"attempt={attempt+1}/{retries+1} cam=0 rc={p0.returncode}\nstdout:\n{out0}\nstderr:\n{err0}\n"
+                        cam0_stamp = None
                     if allow_cam1 and not ok1 and p1 is not None:
                         d1 = f"attempt={attempt+1}/{retries+1} cam=1 rc={p1.returncode}\nstdout:\n{out1}\nstderr:\n{err1}\n"
+                        cam1_stamp = None
                 else:
-                    ok0, d0 = self._run_one(cam0, cam0_path, quality, run_timeout_s)
+                    ok0, d0, cam0_stamp = self._run_one(cam0, cam0_path, quality, run_timeout_s)
                     if allow_cam1:
-                        ok1, d1 = self._run_one(cam1, cam1_path, quality, run_timeout_s)
+                        ok1, d1, cam1_stamp = self._run_one(cam1, cam1_path, quality, run_timeout_s)
                     else:
                         ok1 = True
+                        cam1_stamp = None
+
+                    if not ok0:
+                        cam0_stamp = None
+                    if not ok1:
+                        cam1_stamp = None
 
                 if ok0 and ok1:
                     break
@@ -3400,7 +3420,7 @@ class CaptureService(Node):
                 f"cam1_ok={ok1} path={fail_cam1}\n{d1}\n"
             )
             self.get_logger().error(fail_msg)
-            return False, fail_msg, fail_cam0, fail_cam1, stamp
+            return False, fail_msg, fail_cam0, fail_cam1, trigger_stamp
 
         if not allow_cam1:
             cam1_path = ""
@@ -3408,16 +3428,20 @@ class CaptureService(Node):
         else:
             msg = "OK (still mode)"
 
+        cam0_stamp = cam0_stamp if cam0_path else None
+        cam1_stamp = cam1_stamp if cam1_path else None
+        stamp = cam0_stamp or trigger_stamp
+
         gyro_samples = self._gyro_samples_snapshot()
         cam0_deblur = self._deblur_capture_image(
             cam0_path,
-            stamp if cam0_path else None,
+            cam0_stamp,
             quality,
             gyro_samples,
         )
         cam1_deblur = self._deblur_capture_image(
             cam1_path,
-            stamp if cam1_path else None,
+            cam1_stamp,
             quality,
             gyro_samples,
         )
@@ -3430,7 +3454,9 @@ class CaptureService(Node):
                 "status": "deblur",
                 "mode": "still",
                 "session_id": session,
-                "trigger_stamp": _stamp_to_str(stamp),
+                "trigger_stamp": _stamp_to_str(trigger_stamp),
+                "cam0_stamp": _stamp_to_str(cam0_stamp) if cam0_stamp is not None else None,
+                "cam1_stamp": _stamp_to_str(cam1_stamp) if cam1_stamp is not None else None,
                 "cam0_deblur": cam0_deblur,
                 "cam1_deblur": cam1_deblur,
             }
@@ -3440,11 +3466,11 @@ class CaptureService(Node):
             metadata = self._build_capture_metadata(
                 mode="still",
                 session=session,
-                trigger_stamp=stamp,
+                trigger_stamp=trigger_stamp,
                 cam0_path=cam0_path,
                 cam1_path=cam1_path,
-                cam0_stamp=stamp if cam0_path else None,
-                cam1_stamp=stamp if cam1_path else None,
+                cam0_stamp=cam0_stamp,
+                cam1_stamp=cam1_stamp,
                 cam0_deblur=cam0_deblur,
                 cam1_deblur=cam1_deblur,
             )

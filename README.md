@@ -124,11 +124,13 @@ localization, GPS bridge, camera orientation, and deblur settings.
 One-off overrides still work, but they are optional:
 ```bash
 ./scripts/run_rover_field.sh imu_rate_hz:=200.0
-./scripts/run_rover_field.sh capture_mode:=still
+./scripts/run_rover_field.sh capture_mode:=stream
 ```
 
-The default field script enables GNSS, `/time_reference`, the BNO085 IMU, stream
-capture, localization, and motion deblur.
+The default field script enables GNSS, `/time_reference`, the BNO085 IMU,
+localization, and motion deblur. It uses a split camera workflow:
+- low-resolution live preview for the UI
+- high-resolution `rpicam-still` capture for saved image pairs and deblur output
 
 One-time BNO085 Python dependencies on Raspberry Pi:
 ```bash
@@ -239,13 +241,22 @@ Edit `~/.config/subsea_ui/config.json` and set:
 ```
 
 ## Capture mode for deblurring
-`subsea_capture` now defaults to `capture_mode:=stream` in rover bringup. This keeps previews running and captures directly from live ROS image streams, preserving frame timestamps for motion-compensation workflows.
+The field script defaults to a split preview/capture workflow:
+- live UI preview uses low-load ROS image streams
+- capture/deblur uses high-resolution `rpicam-still` images
+
+This keeps the touchscreen feed responsive without forcing saved scan images to
+use the same low preview resolution. During still capture, managed previews are
+paused briefly so the high-resolution capture can use the camera devices, then
+restarted automatically.
 
 Bringup now uses split topics by default:
-- capture stream input: `/cam0/camera/image_raw`, `/cam1/camera/image_raw`
+- live camera stream input: `/cam0/camera/image_raw`, `/cam1/camera/image_raw`
 - UI preview relay output: `/cam0/preview/image_raw`, `/cam1/preview/image_raw`
 
-This allows lower-load UI preview (`preview_ui_*`) without reducing capture-stream quality (`preview_*`).
+For field capture quality, edit `capture_width`, `capture_height`, and
+`capture_quality` in `scripts/run_rover_field.sh`. For the IMX296 cameras used
+on the rover, the default high-resolution still capture is `1456x1088`.
 
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
@@ -258,13 +269,14 @@ Capture metadata now also includes:
 - a trajectory bundle sampled at `trajectory_sample_rate_hz` (default `100.0`)
 - per-camera deblur diagnostics with exposure-window gyro integration (`exposure_start/end`, `gyro_samples_used`, `delta_theta_rad`, blur vector, PSF settings, output path)
 
-Live stream-capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
+Capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
 
-If you need the old still-capture behavior (`rpicam-still`, with preview pause), override:
+If you need timestamped stream captures instead of high-resolution still
+captures, override:
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
   start_localization:=true \
-  capture_mode:=still
+  capture_mode:=stream
 ```
 
 ## GPIO button trigger (Raspberry Pi)
@@ -281,22 +293,25 @@ Default launch settings:
 Example:
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
-  capture_mode:=stream \
+  capture_mode:=still \
   gpio_button_pin:=24
 ```
 
-If preview is laggy on Raspberry Pi, lower **UI preview relay** load first:
+If preview is laggy on Raspberry Pi, lower the live preview load:
 
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
-  capture_mode:=stream \
-  preview_ui_width:=640 \
-  preview_ui_height:=360 \
-  preview_ui_fps:=10 \
+  capture_mode:=still \
+  preview_width:=640 \
+  preview_height:=360 \
+  preview_fps:=10 \
+  preview_ui_width:=480 \
+  preview_ui_height:=270 \
+  preview_ui_fps:=8 \
   ui_fps:=10
 ```
 
-If you need sharper stream captures for deblurring, keep/increase capture stream settings separately:
+For timestamped stream-capture experiments, raise the stream settings separately:
 
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
@@ -313,11 +328,14 @@ Trajectory + deblur tuning example (Pi 5 field mode):
 
 ```bash
 ros2 launch subsea_bringup rover_app.launch.py \
-  capture_mode:=stream \
+  capture_mode:=still \
   start_localization:=true \
-  preview_width:=1280 \
-  preview_height:=720 \
-  preview_fps:=15 \
+  preview_width:=640 \
+  preview_height:=360 \
+  preview_fps:=10 \
+  capture_width:=1456 \
+  capture_height:=1088 \
+  capture_quality:=95 \
   trajectory_sample_rate_hz:=100.0 \
   trajectory_window_ms:=1000.0 \
   deblur_exposure_time_us:=3000 \

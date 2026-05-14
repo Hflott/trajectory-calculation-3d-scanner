@@ -27,7 +27,7 @@ FIELD_LAUNCH_ARGS=(
   "use_gpsd_json_bridge:=true"
   "start_imu_node:=true"
   "start_localization:=true"
-  "capture_mode:=stream"
+  "capture_mode:=still"
 
   # IMU
   "imu_topic:=/imu/data"
@@ -42,19 +42,26 @@ FIELD_LAUNCH_ARGS=(
 
   # Camera/UI preview
   "manage_previews:=true"
-  "preview_width:=960"
-  "preview_height:=540"
-  "preview_fps:=15"
-  "preview_ui_width:=640"
-  "preview_ui_height:=360"
-  "preview_ui_fps:=15"
+  # Stable dual-camera Pi preset. Raise these after the feeds are proven stable.
+  "preview_width:=640"
+  "preview_height:=360"
+  "preview_fps:=10"
+  "preview_ui_width:=480"
+  "preview_ui_height:=270"
+  "preview_ui_fps:=8"
   "preview_format:=BGR888"
   "swap_preview_feeds:=false"
   "cam0_orientation:=180"
   "cam1_orientation:=180"
   "preview_source_applies_orientation:=false"
 
-  # Capture/deblur
+  # High-quality capture/deblur path. Live preview stays low-res above.
+  "capture_width:=1456"
+  "capture_height:=1088"
+  "capture_quality:=95"
+  "capture_warmup_ms:=700"
+  "capture_timeout_ms:=1500"
+  "capture_pause_previews:=true"
   "enable_motion_deblur:=true"
   "deblur_method:=richardson_lucy"
   "deblur_exposure_ms:=8.0"
@@ -99,7 +106,7 @@ of this script. You do not need to remember launch flags.
 
 Optional one-off overrides are still accepted:
   ./scripts/run_rover_field.sh imu_rate_hz:=200.0
-  ./scripts/run_rover_field.sh capture_mode:=still
+  ./scripts/run_rover_field.sh capture_mode:=stream
   ./scripts/run_rover_field.sh --skip-gnss-preflight
 EOF
 }

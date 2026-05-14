@@ -40,6 +40,12 @@ def generate_launch_description():
     respawn_cameras = LaunchConfiguration('respawn_cameras')
     start_localization = LaunchConfiguration('start_localization')
     capture_mode = LaunchConfiguration('capture_mode')
+    capture_width = LaunchConfiguration('capture_width')
+    capture_height = LaunchConfiguration('capture_height')
+    capture_quality = LaunchConfiguration('capture_quality')
+    capture_warmup_ms = LaunchConfiguration('capture_warmup_ms')
+    capture_timeout_ms = LaunchConfiguration('capture_timeout_ms')
+    capture_pause_previews = LaunchConfiguration('capture_pause_previews')
     enable_gpio_button = LaunchConfiguration('enable_gpio_button')
     gpio_button_pin = LaunchConfiguration('gpio_button_pin')
     gpio_button_debounce_ms = LaunchConfiguration('gpio_button_debounce_ms')
@@ -88,6 +94,12 @@ def generate_launch_description():
     enable_gpio_button_bool = ParameterValue(enable_gpio_button, value_type=bool)
     gpio_button_pin_int = ParameterValue(gpio_button_pin, value_type=int)
     gpio_button_debounce_ms_int = ParameterValue(gpio_button_debounce_ms, value_type=int)
+    capture_w_int = ParameterValue(capture_width, value_type=int)
+    capture_h_int = ParameterValue(capture_height, value_type=int)
+    capture_quality_int = ParameterValue(capture_quality, value_type=int)
+    capture_warmup_ms_int = ParameterValue(capture_warmup_ms, value_type=int)
+    capture_timeout_ms_int = ParameterValue(capture_timeout_ms, value_type=int)
+    capture_pause_previews_bool = ParameterValue(capture_pause_previews, value_type=bool)
     gpsd_port_int = ParameterValue(gpsd_port, value_type=int)
     imu_rate_hz_float = ParameterValue(imu_rate_hz, value_type=float)
     imu_i2c_address_int = ParameterValue(imu_i2c_address, value_type=int)
@@ -305,7 +317,7 @@ def generate_launch_description():
         condition=IfCondition(start_imu_node),
     )
 
-    # --- Capture service (stream-synced by default; still mode optional)
+    # --- Capture service
     capture = Node(
         package='subsea_capture',
         executable='capture_service',
@@ -313,23 +325,24 @@ def generate_launch_description():
         parameters=[{
             'cam0_index': 0,
             'cam1_index': 1,
-            'width': 4056,
-            'height': 3040,
-            'timeout_ms': 6000,     # give still capture some breathing room
-            'warmup_ms': 700,
-            'default_quality': 100,
+            'width': capture_w_int,
+            'height': capture_h_int,
+            'timeout_ms': capture_timeout_ms_int,
+            'warmup_ms': capture_warmup_ms_int,
+            'default_quality': capture_quality_int,
 
             # Preview pause/resume
             'manage_previews': manage_previews_bool,
             'start_previews': start_cameras_bool,
-            'pause_previews': True,
+            'pause_previews': capture_pause_previews_bool,
             # Keep UI alive even if one preview node fails to start.
             'fallback_black_previews': True,
             # Dual-camera rig is expected in field use; avoid transient auto-detect misses.
             'auto_detect_cameras': False,
 
-            # Timestamp-accurate capture from live image stream (recommended for
-            # GNSS/IMU motion compensation workflows).
+            # Capture mode:
+            # - stream: capture from live ROS image streams with frame stamps
+            # - still: pause previews and capture high-resolution rpicam-still images
             'capture_mode': capture_mode,
             'stream_wait_s': 1.0,
             'stream_initial_wait_s': 2.5,
@@ -464,6 +477,12 @@ def generate_launch_description():
         DeclareLaunchArgument('manage_previews', default_value='true'),
         DeclareLaunchArgument('start_localization', default_value='false'),
         DeclareLaunchArgument('capture_mode', default_value='stream'),
+        DeclareLaunchArgument('capture_width', default_value='1456'),
+        DeclareLaunchArgument('capture_height', default_value='1088'),
+        DeclareLaunchArgument('capture_quality', default_value='95'),
+        DeclareLaunchArgument('capture_warmup_ms', default_value='700'),
+        DeclareLaunchArgument('capture_timeout_ms', default_value='1500'),
+        DeclareLaunchArgument('capture_pause_previews', default_value='true'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
         DeclareLaunchArgument('gpio_button_debounce_ms', default_value='40'),

@@ -178,23 +178,12 @@ Create Raspberry Pi desktop shortcut + icon:
 ```bash
 ./scripts/install_desktop_shortcut.sh
 ```
-Install desktop shortcut with camera rotation baked in:
-```bash
-./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180
-```
-Install desktop shortcut with both camera rotation and swapped UI feed placement:
-```bash
-./scripts/install_desktop_shortcut.sh --cam0-orientation 180 --cam1-orientation 180 --swap-preview-feeds
-```
-Install desktop shortcut with alternate IMU bus (example: i2c-gpio bus 3 on GPIO5/6):
-```bash
-./scripts/install_desktop_shortcut.sh --imu-i2c-bus 3
-```
-Install desktop shortcut that starts with gpsd JSON bridge (`/fix` + `/time_reference`):
-```bash
-./scripts/install_desktop_shortcut.sh --use-gpsd-json-bridge
-```
-The installed shortcut starts with `--skip-service-restart` to avoid sudo/password prompts.
+The installed shortcut follows the same `FIELD_LAUNCH_ARGS` defaults in
+`scripts/run_rover_field.sh`; it does not bake in separate camera/IMU/GNSS
+settings.
+
+The desktop shortcut starts with `--skip-gnss-preflight --skip-service-restart`
+to avoid sudo/password prompts.
 Recommended one-time setup so services start at boot:
 ```bash
 sudo systemctl enable --now gpsd.socket chrony

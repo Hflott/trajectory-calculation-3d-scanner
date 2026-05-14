@@ -52,6 +52,7 @@ FIELD_LAUNCH_ARGS=(
   "swap_preview_feeds:=false"
   "cam0_orientation:=180"
   "cam1_orientation:=180"
+  "preview_source_applies_orientation:=false"
 
   # Capture/deblur
   "enable_motion_deblur:=true"

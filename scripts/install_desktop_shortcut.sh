@@ -66,8 +66,9 @@ cat > "${LAUNCHER_FILE}" <<EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "${ROOT_DIR}"
-# Desktop launch avoids sudo prompts. Enable gpsd/chrony at boot once.
-exec "${RUN_SCRIPT}" --skip-gnss-preflight --skip-service-restart "\$@"
+# Run the same field startup as the terminal command. For passwordless GNSS
+# preflight, run scripts/setup_rover_passwordless_launch.sh once.
+exec "${RUN_SCRIPT}" "\$@"
 EOF
 chmod +x "${LAUNCHER_FILE}"
 

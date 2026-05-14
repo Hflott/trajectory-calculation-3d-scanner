@@ -184,11 +184,18 @@ The installed shortcut follows the same `FIELD_LAUNCH_ARGS` defaults in
 `scripts/run_rover_field.sh`; it does not bake in separate camera/IMU/GNSS
 settings.
 
-The desktop shortcut starts with `--skip-gnss-preflight --skip-service-restart`
-to avoid sudo/password prompts.
-Recommended one-time setup so services start at boot:
+Remove the sudo/password prompt from normal launch by running this once on the
+Pi. It installs a root-owned GNSS preflight helper and a narrow sudoers rule for
+that helper:
+```bash
+./scripts/setup_rover_passwordless_launch.sh
+```
+
+The helper also enables gpsd/chrony at boot. If you do not install the helper,
+you can still skip launch-time root setup and only rely on boot services:
 ```bash
 sudo systemctl enable --now gpsd.socket chrony
+./scripts/run_rover_field.sh --skip-gnss-preflight --skip-service-restart
 ```
 
 ### Session Recording (UI)

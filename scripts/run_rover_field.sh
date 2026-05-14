@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WS_DIR="${ROOT_DIR}/ros2_ws"
 ROS_SETUP="/opt/ros/jazzy/setup.bash"
 WS_SETUP="${WS_DIR}/install/setup.bash"
+GNSS_PREFLIGHT_HELPER="/usr/local/sbin/subsea-rover-gnss-preflight"
 
 # ---------------------------------------------------------------------------
 # Field startup defaults
@@ -134,6 +135,9 @@ Optional one-off overrides are still accepted:
   ./scripts/run_rover_field.sh imu_rate_hz:=200.0
   ./scripts/run_rover_field.sh capture_mode:=stream
   ./scripts/run_rover_field.sh --skip-gnss-preflight
+
+To remove the sudo password prompt from normal launch, run once:
+  ./scripts/setup_rover_passwordless_launch.sh
 EOF
 }
 
@@ -296,6 +300,37 @@ run_gnss_preflight_as_root() {
   systemctl restart gpsd.socket gpsd.service chrony >/dev/null 2>&1 || true
 }
 
+run_gnss_preflight() {
+  if [[ -x "${GNSS_PREFLIGHT_HELPER}" ]]; then
+    if sudo -n "${GNSS_PREFLIGHT_HELPER}" >/dev/null 2>&1; then
+      echo "Applied GNSS UART preflight with passwordless helper."
+      return 0
+    fi
+  fi
+
+  if sudo -n true >/dev/null 2>&1; then
+    echo "Applying GNSS UART preflight..."
+  else
+    echo "Requesting sudo for GNSS UART preflight + gpsd/chrony restart..."
+    echo "Tip: run ./scripts/setup_rover_passwordless_launch.sh once to remove this prompt."
+  fi
+  sudo bash -lc "$(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+}
+
+restart_gpsd_chrony() {
+  local systemctl_bin
+  systemctl_bin="$(command -v systemctl || echo /usr/bin/systemctl)"
+
+  if sudo -n "${systemctl_bin}" restart gpsd.socket chrony >/dev/null 2>&1; then
+    echo "Restarted gpsd/chrony with passwordless sudo."
+    return 0
+  fi
+
+  echo "Requesting sudo to restart gpsd/chrony..."
+  echo "Tip: run ./scripts/setup_rover_passwordless_launch.sh once to remove this prompt."
+  sudo "${systemctl_bin}" restart gpsd.socket chrony || true
+}
+
 if command -v systemctl >/dev/null 2>&1; then
   if [[ "${RUN_ROS_CLEANUP}" == "true" ]]; then
     echo "Running ROS prelaunch cleanup..."
@@ -303,19 +338,9 @@ if command -v systemctl >/dev/null 2>&1; then
   fi
 
   if [[ "${RUN_GNSS_PREFLIGHT}" == "true" ]]; then
-    if sudo -n true >/dev/null 2>&1; then
-      echo "Applying GNSS UART preflight..."
-    else
-      echo "Requesting sudo for GNSS UART preflight + gpsd/chrony restart..."
-    fi
-    sudo bash -lc "$(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+    run_gnss_preflight
   elif [[ "${RESTART_GPSD_CHRONY}" == "true" ]]; then
-    if sudo -n true >/dev/null 2>&1; then
-      sudo systemctl restart gpsd.socket chrony || true
-    else
-      echo "Requesting sudo to restart gpsd/chrony..."
-      sudo systemctl restart gpsd.socket chrony || true
-    fi
+    restart_gpsd_chrony
   fi
 fi
 

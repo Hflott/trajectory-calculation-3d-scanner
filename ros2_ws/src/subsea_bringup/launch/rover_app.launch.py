@@ -46,6 +46,9 @@ def generate_launch_description():
     capture_warmup_ms = LaunchConfiguration('capture_warmup_ms')
     capture_timeout_ms = LaunchConfiguration('capture_timeout_ms')
     capture_pause_previews = LaunchConfiguration('capture_pause_previews')
+    capture_awb = LaunchConfiguration('capture_awb')
+    capture_awbgains = LaunchConfiguration('capture_awbgains')
+    capture_saturation = LaunchConfiguration('capture_saturation')
     enable_gpio_button = LaunchConfiguration('enable_gpio_button')
     gpio_button_pin = LaunchConfiguration('gpio_button_pin')
     gpio_button_debounce_ms = LaunchConfiguration('gpio_button_debounce_ms')
@@ -55,6 +58,7 @@ def generate_launch_description():
     preview_ui_width = LaunchConfiguration('preview_ui_width')
     preview_ui_height = LaunchConfiguration('preview_ui_height')
     preview_ui_fps = LaunchConfiguration('preview_ui_fps')
+    preview_ui_saturation = LaunchConfiguration('preview_ui_saturation')
     preview_format = LaunchConfiguration('preview_format')
     swap_preview_feeds = LaunchConfiguration('swap_preview_feeds')
     cam0_orientation = LaunchConfiguration('cam0_orientation')
@@ -100,6 +104,7 @@ def generate_launch_description():
     capture_warmup_ms_int = ParameterValue(capture_warmup_ms, value_type=int)
     capture_timeout_ms_int = ParameterValue(capture_timeout_ms, value_type=int)
     capture_pause_previews_bool = ParameterValue(capture_pause_previews, value_type=bool)
+    capture_saturation_float = ParameterValue(capture_saturation, value_type=float)
     gpsd_port_int = ParameterValue(gpsd_port, value_type=int)
     imu_rate_hz_float = ParameterValue(imu_rate_hz, value_type=float)
     imu_i2c_address_int = ParameterValue(imu_i2c_address, value_type=int)
@@ -113,6 +118,7 @@ def generate_launch_description():
     preview_ui_w_int = ParameterValue(preview_ui_width, value_type=int)
     preview_ui_h_int = ParameterValue(preview_ui_height, value_type=int)
     preview_ui_fps_int = ParameterValue(preview_ui_fps, value_type=int)
+    preview_ui_saturation_float = ParameterValue(preview_ui_saturation, value_type=float)
     cam0_orientation_int = ParameterValue(cam0_orientation, value_type=int)
     cam1_orientation_int = ParameterValue(cam1_orientation, value_type=int)
     preview_source_applies_orientation_bool = ParameterValue(preview_source_applies_orientation, value_type=bool)
@@ -330,6 +336,9 @@ def generate_launch_description():
             'timeout_ms': capture_timeout_ms_int,
             'warmup_ms': capture_warmup_ms_int,
             'default_quality': capture_quality_int,
+            'capture_awb': capture_awb,
+            'capture_awbgains': capture_awbgains,
+            'capture_saturation': capture_saturation_float,
 
             # Preview pause/resume
             'manage_previews': manage_previews_bool,
@@ -392,6 +401,7 @@ def generate_launch_description():
             'preview_relay_width': preview_ui_w_int,
             'preview_relay_height': preview_ui_h_int,
             'preview_relay_fps': preview_ui_fps_int,
+            'preview_relay_saturation': preview_ui_saturation_float,
             'preview_format': preview_format,
             'preview_role': 'viewfinder',
             # Conservative timing reduces "device busy"/broken-pipe startup races.
@@ -483,6 +493,9 @@ def generate_launch_description():
         DeclareLaunchArgument('capture_warmup_ms', default_value='700'),
         DeclareLaunchArgument('capture_timeout_ms', default_value='1500'),
         DeclareLaunchArgument('capture_pause_previews', default_value='true'),
+        DeclareLaunchArgument('capture_awb', default_value=''),
+        DeclareLaunchArgument('capture_awbgains', default_value=''),
+        DeclareLaunchArgument('capture_saturation', default_value='1.0'),
         DeclareLaunchArgument('enable_gpio_button', default_value='true'),
         DeclareLaunchArgument('gpio_button_pin', default_value='24'),
         DeclareLaunchArgument('gpio_button_debounce_ms', default_value='40'),
@@ -492,6 +505,7 @@ def generate_launch_description():
         DeclareLaunchArgument('preview_ui_width', default_value='640'),
         DeclareLaunchArgument('preview_ui_height', default_value='360'),
         DeclareLaunchArgument('preview_ui_fps', default_value='15'),
+        DeclareLaunchArgument('preview_ui_saturation', default_value='1.0'),
         DeclareLaunchArgument('preview_format', default_value='BGR888'),
         DeclareLaunchArgument('swap_preview_feeds', default_value='false'),
         DeclareLaunchArgument('cam0_orientation', default_value='0'),

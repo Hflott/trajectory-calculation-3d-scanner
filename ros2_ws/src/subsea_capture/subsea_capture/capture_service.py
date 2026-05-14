@@ -290,6 +290,16 @@ def _apply_orientation_bgr(frame: np.ndarray, orientation_deg: int) -> np.ndarra
     return frame
 
 
+def _apply_saturation_bgr(frame: np.ndarray, saturation: float) -> np.ndarray:
+    sat = max(0.0, _safe_float(saturation, 1.0))
+    if abs(sat - 1.0) < 0.001:
+        return frame
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    s = hsv[:, :, 1].astype(np.float32) * sat
+    hsv[:, :, 1] = np.clip(s, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+
 def _lerp_vec3(
     a: Tuple[float, float, float],
     b: Tuple[float, float, float],
@@ -439,6 +449,9 @@ class CaptureService(Node):
         self.declare_parameter("warmup_ms", 350)
         self.declare_parameter("timeout_ms", 6000)
         self.declare_parameter("default_quality", 100)
+        self.declare_parameter("capture_awb", "")
+        self.declare_parameter("capture_awbgains", "")
+        self.declare_parameter("capture_saturation", 1.0)
         self.declare_parameter("capture_mode", "stream")  # stream|still
         self.declare_parameter("stream_wait_s", 1.0)
         self.declare_parameter("stream_initial_wait_s", 5.0)
@@ -486,6 +499,7 @@ class CaptureService(Node):
         self.declare_parameter("preview_relay_width", 640)
         self.declare_parameter("preview_relay_height", 360)
         self.declare_parameter("preview_relay_fps", 10)
+        self.declare_parameter("preview_relay_saturation", 1.0)
         self.declare_parameter("preview_format", "RGB888")
         self.declare_parameter("cam0_orientation", 0)
         self.declare_parameter("cam1_orientation", 0)
@@ -883,6 +897,13 @@ class CaptureService(Node):
                 if v < 64:
                     return SetParametersResult(successful=False, reason="preview_relay_height must be >= 64")
                 relay_reasons.append(f"preview_relay_height={v}")
+            elif p.name == "preview_relay_saturation":
+                try:
+                    v = float(p.value)
+                except Exception:
+                    return SetParametersResult(successful=False, reason="preview_relay_saturation must be a number")
+                if v < 0.0 or v > 4.0:
+                    return SetParametersResult(successful=False, reason="preview_relay_saturation must be in [0,4]")
             elif p.name in (
                 "preview_relay_enable",
                 "ui_cam0_node_name",
@@ -1226,8 +1247,11 @@ class CaptureService(Node):
         src_w = int(src.width)
         src_h = int(src.height)
         src_step = int(src.step)
+        saturation = max(0.0, _safe_float(self.get_parameter("preview_relay_saturation").value, 1.0))
+        apply_saturation = abs(saturation - 1.0) >= 0.001
         if (
             int(orientation_deg) == 0
+            and not apply_saturation
             and
             src_enc == "bgr8"
             and src_w == int(width)
@@ -1257,6 +1281,8 @@ class CaptureService(Node):
         if src_w != width or src_h != height:
             interp = cv2.INTER_AREA if (width < src_w or height < src_h) else cv2.INTER_LINEAR
             frame = cv2.resize(frame, (int(width), int(height)), interpolation=interp)
+        if apply_saturation:
+            frame = _apply_saturation_bgr(frame, saturation)
 
         out = Image()
         out.header.stamp = src.header.stamp
@@ -3255,6 +3281,9 @@ class CaptureService(Node):
         warmup_ms = int(self.get_parameter("warmup_ms").value)
         timeout_ms = int(self.get_parameter("timeout_ms").value)
         t_ms = max(timeout_ms, warmup_ms + 200)
+        awb = str(self.get_parameter("capture_awb").value).strip()
+        awbgains = str(self.get_parameter("capture_awbgains").value).strip()
+        saturation = max(0.0, _safe_float(self.get_parameter("capture_saturation").value, 1.0))
 
         cmd = [
             "rpicam-still",
@@ -3266,6 +3295,12 @@ class CaptureService(Node):
             "-t", str(t_ms),
             "-o", out_path,
         ]
+        if awb:
+            cmd.extend(["--awb", awb])
+        if awbgains:
+            cmd.extend(["--awbgains", awbgains])
+        if abs(saturation - 1.0) >= 0.001:
+            cmd.extend(["--saturation", f"{saturation:.3f}"])
         return cmd
 
     def _normalize_still_capture_orientation(

@@ -119,7 +119,7 @@ Start the normal rover field setup with one command:
 The normal startup parameters live near the top of `scripts/run_rover_field.sh`
 in the `FIELD_LAUNCH_ARGS` block. Edit that block directly for the defaults you
 want to use in the field, for example IMU rate, I2C bus, preview size,
-localization, GPS bridge, camera orientation, and deblur settings.
+localization, GPS bridge, camera orientation, color tuning, and deblur settings.
 
 One-off overrides still work, but they are optional:
 ```bash
@@ -257,6 +257,10 @@ Bringup now uses split topics by default:
 For field capture quality, edit `capture_width`, `capture_height`, and
 `capture_quality` in `scripts/run_rover_field.sh`. For the IMX296 cameras used
 on the rover, the default high-resolution still capture is `1456x1088`.
+For simple color tuning, edit `capture_awb`, `capture_saturation`, and
+`preview_ui_saturation` in the same script. The current field preset uses
+`capture_awb:=auto`, `capture_saturation:=0.6`, and
+`preview_ui_saturation:=0.6`.
 
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`

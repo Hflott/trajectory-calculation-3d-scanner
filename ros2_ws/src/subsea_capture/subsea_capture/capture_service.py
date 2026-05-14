@@ -3255,7 +3255,6 @@ class CaptureService(Node):
         warmup_ms = int(self.get_parameter("warmup_ms").value)
         timeout_ms = int(self.get_parameter("timeout_ms").value)
         t_ms = max(timeout_ms, warmup_ms + 200)
-        orientation = self._camera_orientation_for_index(cam_index)
 
         cmd = [
             "rpicam-still",
@@ -3267,10 +3266,28 @@ class CaptureService(Node):
             "-t", str(t_ms),
             "-o", out_path,
         ]
-        # libcamera/rpicam can do 180 degrees via H+V flip.
-        if orientation == 180:
-            cmd.extend(["--hflip", "--vflip"])
         return cmd
+
+    def _normalize_still_capture_orientation(
+        self,
+        cam_index: int,
+        path: str,
+        quality: int,
+    ) -> Tuple[bool, str]:
+        orientation = self._camera_orientation_for_index(cam_index)
+        if orientation == 0 or not path:
+            return True, ""
+        try:
+            frame = cv2.imread(path, cv2.IMREAD_COLOR)
+            if frame is None:
+                return False, f"failed to read captured JPEG for orientation: {path}"
+            frame = _apply_orientation_bgr(frame, orientation)
+            ok, err = self._write_jpeg_bgr(path, frame, quality)
+            if not ok:
+                return False, err
+            return True, ""
+        except Exception as e:
+            return False, str(e)
 
     def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str, Optional[TimeMsg]]:
         cmd = self._rpicam_cmd(cam_index, out_path, quality)
@@ -3421,6 +3438,20 @@ class CaptureService(Node):
             )
             self.get_logger().error(fail_msg)
             return False, fail_msg, fail_cam0, fail_cam1, trigger_stamp
+
+        orient0_ok, orient0_err = self._normalize_still_capture_orientation(cam0, cam0_path, quality)
+        orient1_ok = True
+        orient1_err = ""
+        if allow_cam1:
+            orient1_ok, orient1_err = self._normalize_still_capture_orientation(cam1, cam1_path, quality)
+        if not orient0_ok or not orient1_ok:
+            fail_msg = (
+                "CAPTURE FAILED (still mode): orientation normalization failed\n"
+                f"cam0_ok={orient0_ok} error={orient0_err}\n"
+                f"cam1_ok={orient1_ok} error={orient1_err}\n"
+            )
+            self.get_logger().error(fail_msg)
+            return False, fail_msg, cam0_path if orient0_ok else "", cam1_path if orient1_ok else "", trigger_stamp
 
         if not allow_cam1:
             cam1_path = ""

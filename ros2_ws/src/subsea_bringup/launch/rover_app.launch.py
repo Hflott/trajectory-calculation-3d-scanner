@@ -84,6 +84,15 @@ def generate_launch_description():
     deblur_method = LaunchConfiguration('deblur_method')
     deblur_wiener_snr = LaunchConfiguration('deblur_wiener_snr')
     deblur_imu_to_cam_yaw_deg = LaunchConfiguration('deblur_imu_to_cam_yaw_deg')
+    deblur_use_rig_extrinsics = LaunchConfiguration('deblur_use_rig_extrinsics')
+    rig_imu_position_m = LaunchConfiguration('rig_imu_position_m')
+    rig_cam0_position_m = LaunchConfiguration('rig_cam0_position_m')
+    rig_cam1_position_m = LaunchConfiguration('rig_cam1_position_m')
+    rig_gnss_left_position_m = LaunchConfiguration('rig_gnss_left_position_m')
+    rig_gnss_right_position_m = LaunchConfiguration('rig_gnss_right_position_m')
+    rig_imu_to_base_rotation = LaunchConfiguration('rig_imu_to_base_rotation')
+    rig_cam0_base_to_camera_rotation = LaunchConfiguration('rig_cam0_base_to_camera_rotation')
+    rig_cam1_base_to_camera_rotation = LaunchConfiguration('rig_cam1_base_to_camera_rotation')
     deblur_use_translation = LaunchConfiguration('deblur_use_translation')
     deblur_assumed_depth_m = LaunchConfiguration('deblur_assumed_depth_m')
     deblur_max_odom_age_ms = LaunchConfiguration('deblur_max_odom_age_ms')
@@ -136,6 +145,7 @@ def generate_launch_description():
     deblur_iterations_int = ParameterValue(deblur_iterations, value_type=int)
     deblur_wiener_snr_float = ParameterValue(deblur_wiener_snr, value_type=float)
     deblur_imu_to_cam_yaw_deg_float = ParameterValue(deblur_imu_to_cam_yaw_deg, value_type=float)
+    deblur_use_rig_extrinsics_bool = ParameterValue(deblur_use_rig_extrinsics, value_type=bool)
     deblur_use_translation_bool = ParameterValue(deblur_use_translation, value_type=bool)
     deblur_assumed_depth_m_float = ParameterValue(deblur_assumed_depth_m, value_type=float)
     deblur_max_odom_age_ms_float = ParameterValue(deblur_max_odom_age_ms, value_type=float)
@@ -376,6 +386,15 @@ def generate_launch_description():
             'deblur_method': deblur_method,
             'deblur_wiener_snr': deblur_wiener_snr_float,
             'deblur_imu_to_cam_yaw_deg': deblur_imu_to_cam_yaw_deg_float,
+            'deblur_use_rig_extrinsics': deblur_use_rig_extrinsics_bool,
+            'rig_imu_position_m': rig_imu_position_m,
+            'rig_cam0_position_m': rig_cam0_position_m,
+            'rig_cam1_position_m': rig_cam1_position_m,
+            'rig_gnss_left_position_m': rig_gnss_left_position_m,
+            'rig_gnss_right_position_m': rig_gnss_right_position_m,
+            'rig_imu_to_base_rotation': rig_imu_to_base_rotation,
+            'rig_cam0_base_to_camera_rotation': rig_cam0_base_to_camera_rotation,
+            'rig_cam1_base_to_camera_rotation': rig_cam1_base_to_camera_rotation,
             'deblur_use_translation': deblur_use_translation_bool,
             'deblur_assumed_depth_m': deblur_assumed_depth_m_float,
             'deblur_max_odom_age_ms': deblur_max_odom_age_ms_float,
@@ -533,7 +552,20 @@ def generate_launch_description():
         DeclareLaunchArgument('deblur_wiener_snr', default_value='40.0',
                               description='Wiener SNR (power ratio, higher=sharper). Only used when deblur_method=wiener'),
         DeclareLaunchArgument('deblur_imu_to_cam_yaw_deg', default_value='0.0',
-                              description='Degrees CCW to rotate blur vector from IMU frame to camera image frame'),
+                              description='Extra degrees CCW to rotate the final image-plane blur vector for sign testing'),
+        DeclareLaunchArgument('deblur_use_rig_extrinsics', default_value='true',
+                              description='Use measured IMU/camera rig extrinsics for deblur gyro projection'),
+        DeclareLaunchArgument('rig_imu_position_m', default_value='0.080,0.000,0.020'),
+        DeclareLaunchArgument('rig_cam0_position_m', default_value='-0.367,-0.003,0.063'),
+        DeclareLaunchArgument('rig_cam1_position_m', default_value='0.354,-0.003,0.063'),
+        DeclareLaunchArgument('rig_gnss_left_position_m', default_value='-0.540,0.000,0.050'),
+        DeclareLaunchArgument('rig_gnss_right_position_m', default_value='0.540,0.000,0.050'),
+        DeclareLaunchArgument('rig_imu_to_base_rotation', default_value='-1,0,0,0,-1,0,0,0,1',
+                              description='3x3 row-major rotation mapping IMU-frame vectors into base frame'),
+        DeclareLaunchArgument('rig_cam0_base_to_camera_rotation', default_value='1,0,0,0,0,-1,0,1,0',
+                              description='3x3 row-major rotation mapping base-frame vectors into cam0 optical frame'),
+        DeclareLaunchArgument('rig_cam1_base_to_camera_rotation', default_value='1,0,0,0,0,-1,0,1,0',
+                              description='3x3 row-major rotation mapping base-frame vectors into cam1 optical frame'),
         DeclareLaunchArgument('deblur_use_translation', default_value='false',
                               description='Add translational velocity from odometry to blur estimate'),
         DeclareLaunchArgument('deblur_assumed_depth_m', default_value='1.5',

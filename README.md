@@ -272,8 +272,36 @@ Capture metadata now also includes:
 - interpolated odometry at each camera timestamp (`interp_odom_local`, `interp_odom_global`)
 - a trajectory bundle sampled at `trajectory_sample_rate_hz` (default `100.0`)
 - per-camera deblur diagnostics with exposure-window gyro integration (`exposure_start/end`, `gyro_samples_used`, `delta_theta_rad`, blur vector, PSF settings, output path)
+- rig extrinsics used by deblur (`rig_extrinsics`), including IMU/camera/GNSS positions and the IMU-to-camera rotation matrices
 
 Capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
+
+### Rover rig extrinsics
+The field script contains the measured rover geometry used for motion deblur:
+```bash
+deblur_use_rig_extrinsics:=true
+rig_imu_position_m:=0.080,0.000,0.020
+rig_cam0_position_m:=-0.367,-0.003,0.063
+rig_cam1_position_m:=0.354,-0.003,0.063
+rig_gnss_left_position_m:=-0.540,0.000,0.050
+rig_gnss_right_position_m:=0.540,0.000,0.050
+rig_imu_to_base_rotation:=-1,0,0,0,-1,0,0,0,1
+rig_cam0_base_to_camera_rotation:=1,0,0,0,0,-1,0,1,0
+rig_cam1_base_to_camera_rotation:=1,0,0,0,0,-1,0,1,0
+```
+
+Frame convention:
+- base `+X`: cam0 toward cam1
+- base `+Y`: camera viewing direction
+- base `+Z`: up
+- camera `+X`: image right
+- camera `+Y`: image down
+- camera `+Z`: optical forward
+
+The current default uses the extrinsic rotations for rotational deblur. Camera
+position offsets are recorded in metadata and are only used in the deblur
+projection when `deblur_use_translation:=true`, because translation correction
+depends on scene depth.
 
 If you need timestamped stream captures instead of high-resolution still
 captures, override:

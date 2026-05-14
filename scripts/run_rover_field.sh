@@ -79,6 +79,18 @@ FIELD_LAUNCH_ARGS=(
   "deblur_max_kernel_px:=31"
   "deblur_iterations:=12"
   "deblur_wiener_snr:=40.0"
+  "deblur_use_rig_extrinsics:=true"
+  # Rig frame: +X cam0->cam1, +Y camera viewing direction, +Z up. Values are meters.
+  "rig_imu_position_m:=0.080,0.000,0.020"
+  "rig_cam0_position_m:=-0.367,-0.003,0.063"
+  "rig_cam1_position_m:=0.354,-0.003,0.063"
+  "rig_gnss_left_position_m:=-0.540,0.000,0.050"
+  "rig_gnss_right_position_m:=0.540,0.000,0.050"
+  # Row-major rotations. IMU axes: +X base -X, +Y base -Y, +Z up.
+  "rig_imu_to_base_rotation:=-1,0,0,0,-1,0,0,0,1"
+  # Camera optical frame: +X image right, +Y image down, +Z forward.
+  "rig_cam0_base_to_camera_rotation:=1,0,0,0,0,-1,0,1,0"
+  "rig_cam1_base_to_camera_rotation:=1,0,0,0,0,-1,0,1,0"
   "deblur_imu_to_cam_yaw_deg:=0.0"
   "deblur_use_translation:=false"
   "deblur_assumed_depth_m:=1.5"

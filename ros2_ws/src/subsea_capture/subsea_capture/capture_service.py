@@ -39,6 +39,30 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 StreamFrame = Tuple[Image, float, Optional[int]]
 GyroSample = Tuple[int, Tuple[float, float, float]]
 
+DEFAULT_RIG_IMU_POSITION_M = [0.080, 0.000, 0.020]
+DEFAULT_RIG_CAM0_POSITION_M = [-0.367, -0.003, 0.063]
+DEFAULT_RIG_CAM1_POSITION_M = [0.354, -0.003, 0.063]
+DEFAULT_RIG_GNSS_LEFT_POSITION_M = [-0.540, 0.000, 0.050]
+DEFAULT_RIG_GNSS_RIGHT_POSITION_M = [0.540, 0.000, 0.050]
+
+# Rows map a vector from the source frame into the target frame.
+# Base frame: +X cam0->cam1, +Y camera viewing direction, +Z up.
+# IMU frame: +X base -X, +Y base -Y, +Z base +Z.
+DEFAULT_RIG_IMU_TO_BASE_ROTATION = [
+    -1.0, 0.0, 0.0,
+    0.0, -1.0, 0.0,
+    0.0, 0.0, 1.0,
+]
+
+# Camera optical frame used for deblur: +X image right, +Y image down, +Z forward.
+# With cameras facing base +Y and corrected images upright, image right is base +X
+# and image down is base -Z.
+DEFAULT_RIG_BASE_TO_CAMERA_ROTATION = [
+    1.0, 0.0, 0.0,
+    0.0, 0.0, -1.0,
+    0.0, 1.0, 0.0,
+]
+
 
 def now_ros_time(node: Node) -> TimeMsg:
     return node.get_clock().now().to_msg()
@@ -270,6 +294,37 @@ def _safe_float(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _parse_float_sequence(value: Any, expected: int, default: List[float]) -> List[float]:
+    vals: List[Any]
+    if isinstance(value, np.ndarray):
+        vals = value.flatten().tolist()
+    elif isinstance(value, (list, tuple)):
+        vals = list(value)
+    else:
+        s = str(value).strip()
+        if not s:
+            return [float(x) for x in default]
+        s = s.replace("[", " ").replace("]", " ").replace("(", " ").replace(")", " ")
+        vals = [p for p in re.split(r"[,\s;]+", s) if p]
+
+    if len(vals) != expected:
+        return [float(x) for x in default]
+    try:
+        return [float(x) for x in vals]
+    except Exception:
+        return [float(x) for x in default]
+
+
+def _vec3_to_list(v: Any) -> List[float]:
+    arr = np.asarray(v, dtype=np.float64).reshape(3)
+    return [float(arr[0]), float(arr[1]), float(arr[2])]
+
+
+def _mat3_to_rows(m: Any) -> List[List[float]]:
+    arr = np.asarray(m, dtype=np.float64).reshape(3, 3)
+    return [[float(arr[r, c]) for c in range(3)] for r in range(3)]
+
+
 def _normalize_orientation_deg(v: Any) -> int:
     try:
         raw = int(v)
@@ -477,6 +532,15 @@ class CaptureService(Node):
         self.declare_parameter("deblur_method", "richardson_lucy")  # richardson_lucy|wiener
         self.declare_parameter("deblur_wiener_snr", 40.0)
         self.declare_parameter("deblur_imu_to_cam_yaw_deg", 0.0)
+        self.declare_parameter("deblur_use_rig_extrinsics", True)
+        self.declare_parameter("rig_imu_position_m", DEFAULT_RIG_IMU_POSITION_M)
+        self.declare_parameter("rig_cam0_position_m", DEFAULT_RIG_CAM0_POSITION_M)
+        self.declare_parameter("rig_cam1_position_m", DEFAULT_RIG_CAM1_POSITION_M)
+        self.declare_parameter("rig_gnss_left_position_m", DEFAULT_RIG_GNSS_LEFT_POSITION_M)
+        self.declare_parameter("rig_gnss_right_position_m", DEFAULT_RIG_GNSS_RIGHT_POSITION_M)
+        self.declare_parameter("rig_imu_to_base_rotation", DEFAULT_RIG_IMU_TO_BASE_ROTATION)
+        self.declare_parameter("rig_cam0_base_to_camera_rotation", DEFAULT_RIG_BASE_TO_CAMERA_ROTATION)
+        self.declare_parameter("rig_cam1_base_to_camera_rotation", DEFAULT_RIG_BASE_TO_CAMERA_ROTATION)
         self.declare_parameter("deblur_use_translation", False)
         self.declare_parameter("deblur_assumed_depth_m", 1.5)
         self.declare_parameter("deblur_max_odom_age_ms", 200.0)
@@ -792,6 +856,15 @@ class CaptureService(Node):
             "Camera orientation params: "
             f"cam0_orientation={self._camera_orientation_for_index(int(self.get_parameter('cam0_index').value))} "
             f"cam1_orientation={self._camera_orientation_for_index(int(self.get_parameter('cam1_index').value))}"
+        )
+        rig_meta = self._rig_metadata()
+        self.get_logger().info(
+            "Deblur rig extrinsics: "
+            f"enabled={rig_meta['enabled_for_deblur']} "
+            f"imu={rig_meta['imu']['position_base_m']} "
+            f"cam0={rig_meta['cameras']['cam0']['position_base_m']} "
+            f"cam1={rig_meta['cameras']['cam1']['position_base_m']} "
+            f"gnss_baseline_m={rig_meta['gnss']['baseline_length_m']:.3f}"
         )
         self._setup_gpio_trigger()
         self.add_on_set_parameters_callback(self._on_set_parameters)
@@ -2308,11 +2381,88 @@ class CaptureService(Node):
         )
         return out
 
+    def _rig_vec_param(self, name: str, default: List[float]) -> np.ndarray:
+        vals = _parse_float_sequence(self.get_parameter(name).value, 3, default)
+        return np.asarray(vals, dtype=np.float64)
+
+    def _rig_mat_param(self, name: str, default: List[float]) -> np.ndarray:
+        vals = _parse_float_sequence(self.get_parameter(name).value, 9, default)
+        return np.asarray(vals, dtype=np.float64).reshape(3, 3)
+
+    def _camera_rig_extrinsics(self, camera_name: str) -> Dict[str, Any]:
+        cam = "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0"
+        cam_default = DEFAULT_RIG_CAM1_POSITION_M if cam == "cam1" else DEFAULT_RIG_CAM0_POSITION_M
+        cam_pos = self._rig_vec_param(f"rig_{cam}_position_m", cam_default)
+        imu_pos = self._rig_vec_param("rig_imu_position_m", DEFAULT_RIG_IMU_POSITION_M)
+        imu_to_base = self._rig_mat_param("rig_imu_to_base_rotation", DEFAULT_RIG_IMU_TO_BASE_ROTATION)
+        base_to_camera = self._rig_mat_param(
+            f"rig_{cam}_base_to_camera_rotation",
+            DEFAULT_RIG_BASE_TO_CAMERA_ROTATION,
+        )
+        imu_to_camera = base_to_camera @ imu_to_base
+        return {
+            "camera": cam,
+            "camera_position_base_m": cam_pos,
+            "imu_position_base_m": imu_pos,
+            "camera_position_from_imu_m": cam_pos - imu_pos,
+            "imu_to_base_rotation": imu_to_base,
+            "base_to_camera_rotation": base_to_camera,
+            "imu_to_camera_rotation": imu_to_camera,
+        }
+
+    def _rig_metadata(self) -> Dict[str, Any]:
+        cam0 = self._camera_rig_extrinsics("cam0")
+        cam1 = self._camera_rig_extrinsics("cam1")
+        gnss_left = self._rig_vec_param("rig_gnss_left_position_m", DEFAULT_RIG_GNSS_LEFT_POSITION_M)
+        gnss_right = self._rig_vec_param("rig_gnss_right_position_m", DEFAULT_RIG_GNSS_RIGHT_POSITION_M)
+        imu_pos = self._rig_vec_param("rig_imu_position_m", DEFAULT_RIG_IMU_POSITION_M)
+        return {
+            "enabled_for_deblur": bool(self.get_parameter("deblur_use_rig_extrinsics").value),
+            "base_frame": {
+                "origin": "center_of_beam",
+                "x": "cam0_to_cam1",
+                "y": "camera_viewing_direction",
+                "z": "up",
+            },
+            "camera_frame": {
+                "x": "image_right",
+                "y": "image_down",
+                "z": "optical_forward",
+            },
+            "imu": {
+                "position_base_m": _vec3_to_list(imu_pos),
+                "imu_to_base_rotation": _mat3_to_rows(
+                    self._rig_mat_param("rig_imu_to_base_rotation", DEFAULT_RIG_IMU_TO_BASE_ROTATION)
+                ),
+            },
+            "cameras": {
+                "cam0": {
+                    "position_base_m": _vec3_to_list(cam0["camera_position_base_m"]),
+                    "position_from_imu_m": _vec3_to_list(cam0["camera_position_from_imu_m"]),
+                    "base_to_camera_rotation": _mat3_to_rows(cam0["base_to_camera_rotation"]),
+                    "imu_to_camera_rotation": _mat3_to_rows(cam0["imu_to_camera_rotation"]),
+                },
+                "cam1": {
+                    "position_base_m": _vec3_to_list(cam1["camera_position_base_m"]),
+                    "position_from_imu_m": _vec3_to_list(cam1["camera_position_from_imu_m"]),
+                    "base_to_camera_rotation": _mat3_to_rows(cam1["base_to_camera_rotation"]),
+                    "imu_to_camera_rotation": _mat3_to_rows(cam1["imu_to_camera_rotation"]),
+                },
+            },
+            "gnss": {
+                "left_position_base_m": _vec3_to_list(gnss_left),
+                "right_position_base_m": _vec3_to_list(gnss_right),
+                "baseline_m": _vec3_to_list(gnss_right - gnss_left),
+                "baseline_length_m": float(np.linalg.norm(gnss_right - gnss_left)),
+            },
+        }
+
     def _estimate_blur_kernel(
         self,
         stamp_ns: int,
         width: int,
         gyro_samples: Optional[List[GyroSample]] = None,
+        camera_name: str = "cam0",
     ) -> Tuple[float, float, Dict[str, Any]]:
         exposure_s, exposure_us = self._deblur_exposure_s()
         stamp_ref = self._deblur_stamp_reference()
@@ -2327,9 +2477,11 @@ class CaptureService(Node):
             0.0,
             _safe_float(self.get_parameter("deblur_max_time_reference_age_ms").value, 2000.0),
         )
+        camera_key = "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0"
 
         diag: Dict[str, Any] = {
             "status": "missing_imu",
+            "camera": camera_key,
             "timestamp_source": timestamp_source,
             "image_stamp": _ns_to_stamp_str(stamp_ns),
             "image_stamp_reference": stamp_ref,
@@ -2384,14 +2536,46 @@ class CaptureService(Node):
         dtheta_x = float(dtheta[0]) if len(dtheta) >= 1 else 0.0
         dtheta_y = float(dtheta[1]) if len(dtheta) >= 2 else 0.0
         dtheta_z = float(dtheta[2]) if len(dtheta) >= 3 else 0.0
+        dtheta_imu_vec = np.asarray([dtheta_x, dtheta_y, dtheta_z], dtype=np.float64)
 
-        # Rotational blur: map integrated angular velocity to pixel displacement.
-        dx = float(dtheta_y * focal_px * strength)
-        dy = float(dtheta_x * focal_px * strength)
+        use_rig_extrinsics = bool(self.get_parameter("deblur_use_rig_extrinsics").value)
+        extrinsics: Optional[Dict[str, Any]] = None
+        dtheta_base_vec: Optional[np.ndarray] = None
+        dtheta_camera_vec: Optional[np.ndarray] = None
+        extrinsics_diag: Dict[str, Any] = {
+            "enabled": bool(use_rig_extrinsics),
+            "camera": camera_key,
+        }
 
-        # Rotate blur vector from IMU frame to camera image frame.
-        # Set deblur_imu_to_cam_yaw_deg to the angle (degrees CCW) between the IMU
-        # X-axis and the camera +U (right) axis when viewed from behind the camera.
+        if use_rig_extrinsics:
+            extrinsics = self._camera_rig_extrinsics(camera_name)
+            dtheta_base_vec = extrinsics["imu_to_base_rotation"] @ dtheta_imu_vec
+            dtheta_camera_vec = extrinsics["base_to_camera_rotation"] @ dtheta_base_vec
+
+            # Camera optical convention: +X image right, +Y image down, +Z forward.
+            # A small camera rotation gives centre-image motion u=-theta_y, v=theta_x.
+            dx = float(-dtheta_camera_vec[1] * focal_px * strength)
+            dy = float(dtheta_camera_vec[0] * focal_px * strength)
+            extrinsics_diag.update(
+                {
+                    "camera_position_base_m": _vec3_to_list(extrinsics["camera_position_base_m"]),
+                    "camera_position_from_imu_m": _vec3_to_list(extrinsics["camera_position_from_imu_m"]),
+                    "imu_to_base_rotation": _mat3_to_rows(extrinsics["imu_to_base_rotation"]),
+                    "base_to_camera_rotation": _mat3_to_rows(extrinsics["base_to_camera_rotation"]),
+                    "imu_to_camera_rotation": _mat3_to_rows(extrinsics["imu_to_camera_rotation"]),
+                    "delta_theta_base_rad": _vec3_to_list(dtheta_base_vec),
+                    "delta_theta_camera_rad": _vec3_to_list(dtheta_camera_vec),
+                    "projection_model": "camera_optical_small_angle_center",
+                }
+            )
+        else:
+            # Legacy fallback: map IMU X/Y directly to image displacement, then apply
+            # the optional image-plane yaw correction below.
+            dx = float(dtheta_y * focal_px * strength)
+            dy = float(dtheta_x * focal_px * strength)
+
+        # Optional image-plane fine adjustment. This keeps the old yaw parameter useful
+        # for A/B testing signs after the real rig rotation has been applied.
         imu_to_cam_yaw_deg = _safe_float(
             self.get_parameter("deblur_imu_to_cam_yaw_deg").value, 0.0
         )
@@ -2412,6 +2596,9 @@ class CaptureService(Node):
                 0.0, _safe_float(self.get_parameter("deblur_max_odom_age_ms").value, 200.0)
             )
             trans_diag["assumed_depth_m"] = float(assumed_depth_m)
+            trans_diag["max_odom_age_ms"] = float(max_odom_age_ms)
+            source_parts: List[str] = []
+            base_velocity = np.zeros(3, dtype=np.float64)
             if odom is not None:
                 odom_age_ms = abs(
                     float(_stamp_to_ns(odom.header.stamp) - stamp_ns) / 1_000_000.0
@@ -2420,23 +2607,58 @@ class CaptureService(Node):
                 if max_odom_age_ms <= 0.0 or odom_age_ms <= max_odom_age_ms:
                     vx = float(odom.twist.twist.linear.x)
                     vy = float(odom.twist.twist.linear.y)
-                    # Apply the same yaw rotation to bring velocity into camera frame.
-                    vx_cam = vx * cy - vy * sy
-                    vy_cam = vx * sy + vy * cy
-                    trans_dx = (vx_cam / assumed_depth_m) * focal_px * exposure_s * strength
-                    trans_dy = (vy_cam / assumed_depth_m) * focal_px * exposure_s * strength
-                    dx += trans_dx
-                    dy += trans_dy
+                    vz = float(odom.twist.twist.linear.z)
+                    base_velocity += np.asarray([vx, vy, vz], dtype=np.float64)
+                    source_parts.append("odom_linear")
                     trans_diag.update({
-                        "vx_body": float(vx), "vy_body": float(vy),
-                        "vx_cam": float(vx_cam), "vy_cam": float(vy_cam),
-                        "trans_dx_px": float(trans_dx), "trans_dy_px": float(trans_dy),
-                        "status": "ok",
+                        "odom_linear_base_mps": [float(vx), float(vy), float(vz)],
                     })
                 else:
                     trans_diag["status"] = "odom_too_old"
             else:
-                trans_diag["status"] = "no_odom"
+                trans_diag["odom_status"] = "no_odom"
+
+            if use_rig_extrinsics and extrinsics is not None and dtheta_base_vec is not None and exposure_s > 1e-9:
+                omega_base = dtheta_base_vec / float(exposure_s)
+                lever_base = np.cross(omega_base, extrinsics["camera_position_from_imu_m"])
+                base_velocity += lever_base
+                source_parts.append("gyro_lever_arm")
+                trans_diag.update({
+                    "average_omega_base_rps": _vec3_to_list(omega_base),
+                    "lever_arm_velocity_base_mps": _vec3_to_list(lever_base),
+                })
+
+            if source_parts:
+                if use_rig_extrinsics and extrinsics is not None:
+                    v_camera = extrinsics["base_to_camera_rotation"] @ base_velocity
+                    trans_dx = float((-v_camera[0] / assumed_depth_m) * focal_px * exposure_s * strength)
+                    trans_dy = float((-v_camera[1] / assumed_depth_m) * focal_px * exposure_s * strength)
+                    trans_diag.update({
+                        "base_velocity_mps": _vec3_to_list(base_velocity),
+                        "camera_velocity_mps": _vec3_to_list(v_camera),
+                        "projection_model": "camera_translation_small_angle_center",
+                    })
+                else:
+                    vx = float(base_velocity[0])
+                    vy = float(base_velocity[1])
+                    vx_cam = vx * cy - vy * sy
+                    vy_cam = vx * sy + vy * cy
+                    trans_dx = float((vx_cam / assumed_depth_m) * focal_px * exposure_s * strength)
+                    trans_dy = float((vy_cam / assumed_depth_m) * focal_px * exposure_s * strength)
+                    trans_diag.update({
+                        "vx_body": float(vx), "vy_body": float(vy),
+                        "vx_cam": float(vx_cam), "vy_cam": float(vy_cam),
+                    })
+                dx += trans_dx
+                dy += trans_dy
+                trans_diag.update({
+                    "source": "+".join(source_parts),
+                    "trans_dx_px": float(trans_dx),
+                    "trans_dy_px": float(trans_dy),
+                    "status": "ok",
+                })
+            elif "status" not in trans_diag:
+                trans_diag["status"] = "no_velocity_source"
 
         length_raw = math.sqrt(dx * dx + dy * dy)
         angle_rad = float(math.atan2(dy, dx)) if length_raw > 1e-9 else 0.0
@@ -2448,6 +2670,7 @@ class CaptureService(Node):
             {
                 "delta_theta_rad": [dtheta_x, dtheta_y, dtheta_z],
                 "imu_to_cam_yaw_deg": float(imu_to_cam_yaw_deg),
+                "rig_extrinsics": extrinsics_diag,
                 "translation": trans_diag,
                 "blur_dx_px": float(dx),
                 "blur_dy_px": float(dy),
@@ -2465,9 +2688,11 @@ class CaptureService(Node):
         stamp: Optional[TimeMsg],
         quality: int,
         gyro_samples: Optional[List[GyroSample]] = None,
+        camera_name: str = "cam0",
     ) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             "enabled": bool(self.get_parameter("enable_motion_deblur").value),
+            "camera": "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0",
             "path": "",
             "status": "disabled",
         }
@@ -2502,6 +2727,7 @@ class CaptureService(Node):
             stamp_ns,
             int(img.shape[1]),
             gyro_samples,
+            camera_name=info["camera"],
         )
         info.update(diag)
         info["kernel_length_px"] = float(length_px)
@@ -2733,6 +2959,7 @@ class CaptureService(Node):
                 or "unknown",
                 "image_stamp_reference": self._deblur_stamp_reference(),
             },
+            "rig_extrinsics": self._rig_metadata(),
             "cameras": {},
         }
         with self._sensor_lock:
@@ -3504,12 +3731,14 @@ class CaptureService(Node):
             cam0_stamp,
             quality,
             gyro_samples,
+            camera_name="cam0",
         )
         cam1_deblur = self._deblur_capture_image(
             cam1_path,
             cam1_stamp,
             quality,
             gyro_samples,
+            camera_name="cam1",
         )
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
@@ -3808,8 +4037,20 @@ class CaptureService(Node):
             msg = "OK (stream mode, cam1 skipped: only one stream detected)"
 
         gyro_samples = self._gyro_samples_snapshot()
-        cam0_deblur = self._deblur_capture_image(cam0_path, cam0_stamp, quality, gyro_samples)
-        cam1_deblur = self._deblur_capture_image(cam1_path, cam1_stamp, quality, gyro_samples)
+        cam0_deblur = self._deblur_capture_image(
+            cam0_path,
+            cam0_stamp,
+            quality,
+            gyro_samples,
+            camera_name="cam0",
+        )
+        cam1_deblur = self._deblur_capture_image(
+            cam1_path,
+            cam1_stamp,
+            quality,
+            gyro_samples,
+            camera_name="cam1",
+        )
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
         if cam1_deblur.get("path"):

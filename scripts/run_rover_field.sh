@@ -50,8 +50,8 @@ FIELD_LAUNCH_ARGS=(
   "preview_ui_fps:=15"
   "preview_format:=BGR888"
   "swap_preview_feeds:=false"
-  "cam0_orientation:=0"
-  "cam1_orientation:=0"
+  "cam0_orientation:=180"
+  "cam1_orientation:=180"
 
   # Capture/deblur
   "enable_motion_deblur:=true"

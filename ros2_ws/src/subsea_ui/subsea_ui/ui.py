@@ -2123,7 +2123,10 @@ class MainWindow(QWidget):
         def setpix(label: QLabel, pix: Optional[QPixmap]):
             if not pix:
                 return
-            label.setPixmap(pix.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            target = label.size()
+            if target.width() <= 1 or target.height() <= 1:
+                return
+            label.setPixmap(pix.scaled(target, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
 
         setpix(self.cap0, self._cap0_pix)
         setpix(self.cap1, self._cap1_pix)

@@ -1,7 +1,7 @@
 ekf_global:
   ros__parameters:
     frequency: 100.0
-    sensor_timeout: 0.08
+    sensor_timeout: 0.5
     two_d_mode: false
     transform_time_offset: 0.0
     transform_timeout: 0.0
@@ -14,7 +14,9 @@ ekf_global:
     base_link_frame: base_link
     world_frame: map
 
-    # Fuse local odometry estimate with GPS-derived odometry in global frame.
+    # Fuse local odometry (position + velocity) with GPS-derived odometry in global frame.
+    # IMU is intentionally excluded here — it is already fused in ekf_local and its
+    # output is carried through /odometry/local. Including it here double-counts it.
     odom0: /odometry/local
     odom0_config: [true,  true,  true,
                    true,  true,  true,
@@ -36,18 +38,6 @@ ekf_global:
     odom1_nodelay: true
     odom1_differential: false
     odom1_relative: false
-
-    imu0: /imu/data
-    imu0_config: [false, false, false,
-                  true,  true,  true,
-                  false, false, false,
-                  true,  true,  true,
-                  false, false, false]
-    imu0_nodelay: true
-    imu0_differential: false
-    imu0_relative: true
-    imu0_queue_size: 20
-    imu0_remove_gravitational_acceleration: true
 
     use_control: false
     stamped_control: false

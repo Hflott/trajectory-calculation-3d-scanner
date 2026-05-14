@@ -106,7 +106,7 @@ def generate_launch_description():
             DeclareLaunchArgument("map_frame", default_value="map"),
             DeclareLaunchArgument("odom_frame", default_value="odom"),
             DeclareLaunchArgument("base_link_frame", default_value="base_link"),
-            DeclareLaunchArgument("magnetic_declination_radians", default_value="0.0"),
+            DeclareLaunchArgument("magnetic_declination_radians", default_value="0.076"),
             DeclareLaunchArgument("yaw_offset", default_value="0.0"),
             DeclareLaunchArgument("zero_altitude", default_value="false"),
             ekf_local,

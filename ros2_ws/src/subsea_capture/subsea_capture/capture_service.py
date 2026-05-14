@@ -13,6 +13,7 @@ import threading
 import traceback
 from collections import deque
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Deque, Dict, List, Tuple, Optional, Callable
 
 import cv2
@@ -336,18 +337,16 @@ def _quat_slerp(q0: List[float], q1: List[float], t: float) -> List[float]:
     ]
 
 
-def _line_psf(length_px: float, angle_deg: float, max_kernel: int) -> np.ndarray:
-    l = int(max(1, round(float(length_px))))
-    max_kernel = max(3, int(max_kernel))
-    if max_kernel % 2 == 0:
-        max_kernel += 1
+@lru_cache(maxsize=256)
+def _line_psf_cached(length_px_rounded: int, angle_tenths: int, max_kernel: int) -> np.ndarray:
+    l = int(max(1, length_px_rounded))
     base = max(3, l * 2 + 1)
     k = min(base, max_kernel)
     if k % 2 == 0:
         k += 1
     psf = np.zeros((k, k), dtype=np.float32)
     c = k // 2
-    ang = math.radians(float(angle_deg))
+    ang = math.radians(float(angle_tenths) / 10.0)
     dx = int(round((l - 1) * 0.5 * math.cos(ang)))
     dy = int(round((l - 1) * 0.5 * math.sin(ang)))
     x0 = int(_clamp(c - dx, 0, k - 1))
@@ -360,7 +359,19 @@ def _line_psf(length_px: float, angle_deg: float, max_kernel: int) -> np.ndarray
         psf[c, c] = 1.0
         s = 1.0
     psf /= s
+    psf.setflags(write=False)
     return psf
+
+
+def _line_psf(length_px: float, angle_deg: float, max_kernel: int) -> np.ndarray:
+    l = int(max(1, round(float(length_px))))
+    max_kernel = max(3, int(max_kernel))
+    if max_kernel % 2 == 0:
+        max_kernel += 1
+    # A line PSF is symmetric for angle+180. Quantizing to 0.1 deg keeps
+    # cache churn low without changing the rasterized kernel meaningfully.
+    angle_tenths = int(round(float(angle_deg) * 10.0)) % 1800
+    return _line_psf_cached(l, angle_tenths, max_kernel)
 
 
 def _richardson_lucy_bgr(
@@ -405,11 +416,13 @@ def _wiener_deconvolve_bgr(
     H_conj = np.conj(H)
     # Wiener formula: F_est = (H* · G) / (|H|² + 1/SNR)
     denom = (H_conj * H).real + (1.0 / max(1.0, float(snr)))
-    result = np.zeros_like(img)
-    for c in range(3):
-        G = np.fft.rfft2(img[:, :, c])
-        channel = np.fft.irfft2((H_conj * G) / denom, s=(h, w))
-        result[:, :, c] = np.clip(channel, 0.0, 1.0)
+    G = np.fft.rfft2(img, axes=(0, 1))
+    result = np.fft.irfft2(
+        (H_conj[:, :, None] * G) / denom[:, :, None],
+        s=(h, w),
+        axes=(0, 1),
+    )
+    result = np.clip(result, 0.0, 1.0)
     return np.clip(result * 255.0, 0.0, 255.0).astype(np.uint8)
 
 
@@ -450,6 +463,10 @@ class CaptureService(Node):
         self.declare_parameter("deblur_iterations", 12)
         self.declare_parameter("deblur_method", "richardson_lucy")  # richardson_lucy|wiener
         self.declare_parameter("deblur_wiener_snr", 40.0)
+        self.declare_parameter("deblur_imu_to_cam_yaw_deg", 0.0)
+        self.declare_parameter("deblur_use_translation", False)
+        self.declare_parameter("deblur_assumed_depth_m", 1.5)
+        self.declare_parameter("deblur_max_odom_age_ms", 200.0)
         self.declare_parameter("deblur_allow_nearest_fallback", False)
         self.declare_parameter("deblur_max_integration_gap_ms", 25.0)
         self.declare_parameter("deblur_require_time_reference", True)
@@ -2152,7 +2169,12 @@ class CaptureService(Node):
             "alpha": float(alpha),
         }
 
-    def _integrate_gyro_interval(self, t0_ns: int, t1_ns: int) -> Dict[str, Any]:
+    def _integrate_gyro_interval(
+        self,
+        t0_ns: int,
+        t1_ns: int,
+        gyro_samples: Optional[List[GyroSample]] = None,
+    ) -> Dict[str, Any]:
         out: Dict[str, Any] = {
             "ok": False,
             "status": "missing_imu",
@@ -2162,7 +2184,7 @@ class CaptureService(Node):
             out["status"] = "invalid_exposure_interval"
             return out
 
-        samples = self._gyro_samples_snapshot()
+        samples = gyro_samples if gyro_samples is not None else self._gyro_samples_snapshot()
         out["gyro_buffer_samples"] = int(len(samples))
         if len(samples) < 2:
             out["status"] = "not_enough_imu_samples"
@@ -2260,7 +2282,12 @@ class CaptureService(Node):
         )
         return out
 
-    def _estimate_blur_kernel(self, stamp_ns: int, width: int) -> Tuple[float, float, Dict[str, Any]]:
+    def _estimate_blur_kernel(
+        self,
+        stamp_ns: int,
+        width: int,
+        gyro_samples: Optional[List[GyroSample]] = None,
+    ) -> Tuple[float, float, Dict[str, Any]]:
         exposure_s, exposure_us = self._deblur_exposure_s()
         stamp_ref = self._deblur_stamp_reference()
         t0_ns, t1_ns = self._deblur_exposure_window_ns(stamp_ns, exposure_us, stamp_ref)
@@ -2313,7 +2340,7 @@ class CaptureService(Node):
                 diag["status"] = "stale_time_reference"
                 return 0.0, 0.0, diag
 
-        integration = self._integrate_gyro_interval(t0_ns, t1_ns)
+        integration = self._integrate_gyro_interval(t0_ns, t1_ns, gyro_samples)
         dtheta = integration.get("delta_theta_rad", [0.0, 0.0, 0.0])
         if bool(integration.get("ok")):
             diag["status"] = "ok"
@@ -2331,8 +2358,60 @@ class CaptureService(Node):
         dtheta_x = float(dtheta[0]) if len(dtheta) >= 1 else 0.0
         dtheta_y = float(dtheta[1]) if len(dtheta) >= 2 else 0.0
         dtheta_z = float(dtheta[2]) if len(dtheta) >= 3 else 0.0
+
+        # Rotational blur: map integrated angular velocity to pixel displacement.
         dx = float(dtheta_y * focal_px * strength)
         dy = float(dtheta_x * focal_px * strength)
+
+        # Rotate blur vector from IMU frame to camera image frame.
+        # Set deblur_imu_to_cam_yaw_deg to the angle (degrees CCW) between the IMU
+        # X-axis and the camera +U (right) axis when viewed from behind the camera.
+        imu_to_cam_yaw_deg = _safe_float(
+            self.get_parameter("deblur_imu_to_cam_yaw_deg").value, 0.0
+        )
+        cy = math.cos(math.radians(imu_to_cam_yaw_deg))
+        sy = math.sin(math.radians(imu_to_cam_yaw_deg))
+        if abs(imu_to_cam_yaw_deg) > 0.01:
+            dx, dy = dx * cy - dy * sy, dx * sy + dy * cy
+
+        # Translational blur from odometry velocity (depth-dependent).
+        use_translation = bool(self.get_parameter("deblur_use_translation").value)
+        trans_diag: Dict[str, Any] = {"enabled": use_translation}
+        if use_translation:
+            odom = self._nearest_odom_local(stamp_ns)
+            assumed_depth_m = max(
+                0.05, _safe_float(self.get_parameter("deblur_assumed_depth_m").value, 1.5)
+            )
+            max_odom_age_ms = max(
+                0.0, _safe_float(self.get_parameter("deblur_max_odom_age_ms").value, 200.0)
+            )
+            trans_diag["assumed_depth_m"] = float(assumed_depth_m)
+            if odom is not None:
+                odom_age_ms = abs(
+                    float(_stamp_to_ns(odom.header.stamp) - stamp_ns) / 1_000_000.0
+                )
+                trans_diag["odom_age_ms"] = float(odom_age_ms)
+                if max_odom_age_ms <= 0.0 or odom_age_ms <= max_odom_age_ms:
+                    vx = float(odom.twist.twist.linear.x)
+                    vy = float(odom.twist.twist.linear.y)
+                    # Apply the same yaw rotation to bring velocity into camera frame.
+                    vx_cam = vx * cy - vy * sy
+                    vy_cam = vx * sy + vy * cy
+                    trans_dx = (vx_cam / assumed_depth_m) * focal_px * exposure_s * strength
+                    trans_dy = (vy_cam / assumed_depth_m) * focal_px * exposure_s * strength
+                    dx += trans_dx
+                    dy += trans_dy
+                    trans_diag.update({
+                        "vx_body": float(vx), "vy_body": float(vy),
+                        "vx_cam": float(vx_cam), "vy_cam": float(vy_cam),
+                        "trans_dx_px": float(trans_dx), "trans_dy_px": float(trans_dy),
+                        "status": "ok",
+                    })
+                else:
+                    trans_diag["status"] = "odom_too_old"
+            else:
+                trans_diag["status"] = "no_odom"
+
         length_raw = math.sqrt(dx * dx + dy * dy)
         angle_rad = float(math.atan2(dy, dx)) if length_raw > 1e-9 else 0.0
         angle_deg = float(math.degrees(angle_rad))
@@ -2342,8 +2421,10 @@ class CaptureService(Node):
         diag.update(
             {
                 "delta_theta_rad": [dtheta_x, dtheta_y, dtheta_z],
-                "blur_dx_px": dx,
-                "blur_dy_px": dy,
+                "imu_to_cam_yaw_deg": float(imu_to_cam_yaw_deg),
+                "translation": trans_diag,
+                "blur_dx_px": float(dx),
+                "blur_dy_px": float(dy),
                 "blur_length_px": float(length_raw),
                 "blur_angle_rad": angle_rad,
                 "blur_angle_deg": angle_deg,
@@ -2357,6 +2438,7 @@ class CaptureService(Node):
         img_path: str,
         stamp: Optional[TimeMsg],
         quality: int,
+        gyro_samples: Optional[List[GyroSample]] = None,
     ) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             "enabled": bool(self.get_parameter("enable_motion_deblur").value),
@@ -2371,11 +2453,6 @@ class CaptureService(Node):
         if not os.path.exists(img_path):
             info["status"] = "missing_input_file"
             return info
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-        if img is None:
-            info["status"] = "decode_failed"
-            return info
-
         stem, ext = os.path.splitext(img_path)
         ext = ext or ".jpg"
         out_path = f"{stem}_deblur{ext}"
@@ -2389,8 +2466,17 @@ class CaptureService(Node):
                 info["status"] = f"copy_failed: {e}"
             return info
 
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        if img is None:
+            info["status"] = "decode_failed"
+            return info
+
         stamp_ns = _stamp_to_ns(stamp)
-        length_px, angle_deg, diag = self._estimate_blur_kernel(stamp_ns, int(img.shape[1]))
+        length_px, angle_deg, diag = self._estimate_blur_kernel(
+            stamp_ns,
+            int(img.shape[1]),
+            gyro_samples,
+        )
         info.update(diag)
         info["kernel_length_px"] = float(length_px)
         info["kernel_angle_deg"] = float(angle_deg)
@@ -3322,8 +3408,19 @@ class CaptureService(Node):
         else:
             msg = "OK (still mode)"
 
-        cam0_deblur = self._deblur_capture_image(cam0_path, stamp if cam0_path else None, quality)
-        cam1_deblur = self._deblur_capture_image(cam1_path, stamp if cam1_path else None, quality)
+        gyro_samples = self._gyro_samples_snapshot()
+        cam0_deblur = self._deblur_capture_image(
+            cam0_path,
+            stamp if cam0_path else None,
+            quality,
+            gyro_samples,
+        )
+        cam1_deblur = self._deblur_capture_image(
+            cam1_path,
+            stamp if cam1_path else None,
+            quality,
+            gyro_samples,
+        )
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
         if cam1_deblur.get("path"):
@@ -3618,8 +3715,9 @@ class CaptureService(Node):
         else:
             msg = "OK (stream mode, cam1 skipped: only one stream detected)"
 
-        cam0_deblur = self._deblur_capture_image(cam0_path, cam0_stamp, quality)
-        cam1_deblur = self._deblur_capture_image(cam1_path, cam1_stamp, quality)
+        gyro_samples = self._gyro_samples_snapshot()
+        cam0_deblur = self._deblur_capture_image(cam0_path, cam0_stamp, quality, gyro_samples)
+        cam1_deblur = self._deblur_capture_image(cam1_path, cam1_stamp, quality, gyro_samples)
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
         if cam1_deblur.get("path"):

@@ -63,6 +63,7 @@ FIELD_LAUNCH_ARGS=(
   "capture_warmup_ms:=700"
   "capture_timeout_ms:=1500"
   "capture_pause_previews:=true"
+  "still_capture_backend:=auto"
   "capture_awb:=auto"
   "capture_saturation:=0.6"
   "enable_motion_deblur:=true"

@@ -19,6 +19,7 @@ setup(
     entry_points={
         'console_scripts': [
             'capture_service = subsea_capture.capture_service:main',
+            'picamera2_still_capture = subsea_capture.picamera2_still_capture:main',
         ],
     },
 )

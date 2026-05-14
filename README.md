@@ -265,7 +265,7 @@ For simple color tuning, edit `capture_awb`, `capture_saturation`, and
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
 - `*_cam0_deblur.jpg` / `*_cam1_deblur.jpg` (IMU motion-aware deblur output)
-- `*_cam0_rpicam_meta.json` / `*_cam1_rpicam_meta.json` with the camera-reported still metadata, including `ExposureTime` when available
+- `*_cam0_camera_meta.json` / `*_cam1_camera_meta.json` with camera-reported still metadata, including `ExposureTime` and Picamera2 `SensorTimestamp` when available
 - `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
 - `*_trajectory.csv` (interpolated trajectory samples, default 100 Hz around trigger)
 
@@ -332,10 +332,24 @@ deblur_gyro_bias_max_age_s:=30.0
 The bias estimator state and the applied bias are saved under `gyro_bias` in the
 per-camera deblur diagnostics.
 
-In still-capture mode, `capture_service` now passes `--metadata` to
-`rpicam-still` and uses the per-image `ExposureTime` from that metadata for the
-deblur exposure window. If the camera metadata is missing or does not contain
-exposure, it falls back to `deblur_exposure_time_us` or `deblur_exposure_ms`.
+In still-capture mode, `capture_service` defaults to:
+```bash
+still_capture_backend:=auto
+```
+
+`auto` tries the Picamera2 helper first. When Picamera2 succeeds, deblur uses
+the per-image exposure midpoint estimated from `SensorTimestamp` + `ExposureTime`
+instead of the old process-completion timestamp. If Picamera2 is unavailable or
+fails, capture falls back to `rpicam-still --metadata` and still uses the
+camera-reported `ExposureTime`. If the camera metadata is missing or does not
+contain exposure, it falls back to `deblur_exposure_time_us` or
+`deblur_exposure_ms`.
+
+You can force the backend for testing:
+```bash
+still_capture_backend:=picamera2
+still_capture_backend:=rpicam
+```
 
 If you need timestamped stream captures instead of high-resolution still
 captures, override:

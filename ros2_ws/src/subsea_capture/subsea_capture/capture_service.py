@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import sys
 from bisect import bisect_left, bisect_right
 import shutil
 import time
@@ -283,6 +284,13 @@ def _ns_to_stamp_str(ns: int) -> str:
     return f"{sec}.{nsec:09d}"
 
 
+def _ns_to_time_msg(ns: int) -> TimeMsg:
+    msg = TimeMsg()
+    msg.sec = int(ns // 1_000_000_000)
+    msg.nanosec = int(ns % 1_000_000_000)
+    return msg
+
+
 def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
@@ -352,7 +360,20 @@ def _extract_exposure_time_us(metadata: Any) -> Optional[int]:
     )
     if value is None or not math.isfinite(value) or value <= 0.0:
         return None
-    # rpicam metadata reports ExposureTime in microseconds.
+    # libcamera/Picamera2/rpicam metadata reports ExposureTime in microseconds.
+    return int(round(value))
+
+
+def _extract_exposure_midpoint_system_ns(metadata: Any) -> Optional[int]:
+    value = _find_numeric_key(
+        metadata,
+        (
+            "exposure_midpoint_system_ns",
+            "exposuremidpointsystemns",
+        ),
+    )
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
     return int(round(value))
 
 
@@ -549,6 +570,7 @@ class CaptureService(Node):
         self.declare_parameter("capture_awbgains", "")
         self.declare_parameter("capture_saturation", 1.0)
         self.declare_parameter("capture_mode", "stream")  # stream|still
+        self.declare_parameter("still_capture_backend", "auto")  # auto|picamera2|rpicam
         self.declare_parameter("stream_wait_s", 1.0)
         self.declare_parameter("stream_initial_wait_s", 5.0)
         self.declare_parameter("stream_max_frame_age_s", 1.0)
@@ -2667,7 +2689,7 @@ class CaptureService(Node):
             "image_stamp_reference": stamp_ref,
             "exposure_time_us": int(exposure_us),
             "exposure_ms": float(exposure_s * 1000.0),
-            "exposure_source": "rpicam_metadata" if exposure_time_us_override else "configured",
+            "exposure_source": "camera_metadata" if exposure_time_us_override else "configured",
             "exposure_start": _ns_to_stamp_str(t0_ns),
             "exposure_end": _ns_to_stamp_str(t1_ns),
             "fov_deg": float(fov_deg),
@@ -3188,7 +3210,7 @@ class CaptureService(Node):
                 "stamp": _stamp_to_str(stamp) if stamp is not None else None,
                 "timestamp_source": str(self.get_parameter("deblur_timestamp_source").value).strip() or "unknown",
                 "exposure_time_us": int(exposure_us),
-                "exposure_source": "rpicam_metadata" if exposure_override else "configured",
+                "exposure_source": "camera_metadata" if exposure_override else "configured",
                 "stamp_reference": self._deblur_stamp_reference(),
                 "deblur_timestamp_offset_ms": self._deblur_timestamp_offset_ms_for_camera(name),
             }
@@ -3713,7 +3735,7 @@ class CaptureService(Node):
                 return
             time.sleep(poll)
 
-    def _read_rpicam_metadata(self, metadata_path: str) -> Dict[str, Any]:
+    def _read_camera_metadata(self, metadata_path: str) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             "path": metadata_path,
             "exists": bool(metadata_path and os.path.exists(metadata_path)),
@@ -3730,14 +3752,52 @@ class CaptureService(Node):
             return info
 
         exposure_us = _extract_exposure_time_us(data)
+        midpoint_ns = _extract_exposure_midpoint_system_ns(data)
         info.update({
             "status": "ok",
             "exposure_time_us": int(exposure_us) if exposure_us is not None else None,
+            "exposure_midpoint_system_ns": int(midpoint_ns) if midpoint_ns is not None else None,
             "metadata": data,
         })
         if exposure_us is not None:
             info["exposure_ms"] = float(exposure_us) / 1000.0
+        if midpoint_ns is not None:
+            info["exposure_midpoint_stamp"] = _ns_to_stamp_str(midpoint_ns)
         return info
+
+    def _picamera2_cmd(
+        self,
+        cam_index: int,
+        out_path: str,
+        quality: int,
+        metadata_path: str,
+    ) -> List[str]:
+        width = int(self.get_parameter("width").value)
+        height = int(self.get_parameter("height").value)
+        warmup_ms = int(self.get_parameter("warmup_ms").value)
+        timeout_ms = int(self.get_parameter("timeout_ms").value)
+        awb = str(self.get_parameter("capture_awb").value).strip()
+        awbgains = str(self.get_parameter("capture_awbgains").value).strip()
+        saturation = max(0.0, _safe_float(self.get_parameter("capture_saturation").value, 1.0))
+
+        cmd = [
+            sys.executable,
+            "-m", "subsea_capture.picamera2_still_capture",
+            "--camera", str(cam_index),
+            "--width", str(width),
+            "--height", str(height),
+            "--quality", str(quality),
+            "--warmup-ms", str(warmup_ms),
+            "--timeout-ms", str(timeout_ms),
+            "--saturation", f"{saturation:.3f}",
+            "--output", out_path,
+            "--metadata-json", metadata_path,
+        ]
+        if awb:
+            cmd.extend(["--awb", awb])
+        if awbgains:
+            cmd.extend(["--awbgains", awbgains])
+        return cmd
 
     def _rpicam_cmd(
         self,
@@ -3804,24 +3864,99 @@ class CaptureService(Node):
         timeout_s: float,
         metadata_path: str,
     ) -> Tuple[bool, str, Optional[TimeMsg], Dict[str, Any]]:
-        cmd = self._rpicam_cmd(cam_index, out_path, quality, metadata_path)
+        backend = str(self.get_parameter("still_capture_backend").value).strip().lower()
+        if backend not in ("auto", "picamera2", "rpicam", "rpicam-still"):
+            backend = "auto"
+        attempts = ["picamera2", "rpicam"] if backend == "auto" else [backend]
+        attempts = ["rpicam" if a == "rpicam-still" else a for a in attempts]
+
+        last_error = ""
+        last_stamp: Optional[TimeMsg] = None
+        last_meta: Dict[str, Any] = {
+            "path": metadata_path,
+            "exists": False,
+            "status": "not_run",
+            "exposure_time_us": None,
+            "backend": backend,
+        }
+
+        for attempt_backend in attempts:
+            ok, detail, stamp, meta = self._run_one_with_backend(
+                attempt_backend,
+                cam_index,
+                out_path,
+                quality,
+                timeout_s,
+                metadata_path,
+            )
+            meta["requested_backend"] = backend
+            meta["attempted_backend"] = attempt_backend
+            last_stamp = stamp
+            last_meta = meta
+            if ok:
+                return True, detail, stamp, meta
+            last_error = detail
+            if backend == "auto" and attempt_backend == "picamera2":
+                self.get_logger().warn(
+                    f"Picamera2 still capture failed for camera {cam_index}; falling back to rpicam-still: {detail}"
+                )
+
+        return False, last_error, last_stamp, last_meta
+
+    def _run_one_with_backend(
+        self,
+        backend: str,
+        cam_index: int,
+        out_path: str,
+        quality: int,
+        timeout_s: float,
+        metadata_path: str,
+    ) -> Tuple[bool, str, Optional[TimeMsg], Dict[str, Any]]:
+        cmd = (
+            self._picamera2_cmd(cam_index, out_path, quality, metadata_path)
+            if backend == "picamera2"
+            else self._rpicam_cmd(cam_index, out_path, quality, metadata_path)
+        )
         end_stamp: Optional[TimeMsg] = None
-        meta: Dict[str, Any] = {"path": metadata_path, "exists": False, "status": "not_run", "exposure_time_us": None}
+        meta: Dict[str, Any] = {
+            "path": metadata_path,
+            "exists": False,
+            "status": "not_run",
+            "exposure_time_us": None,
+            "backend": backend,
+        }
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=self._preview_env())
             end_stamp = now_ros_time(self)
         except subprocess.TimeoutExpired:
-            meta = self._read_rpicam_metadata(metadata_path)
-            return False, f"TimeoutExpired running: {' '.join(cmd)}", now_ros_time(self), meta
+            meta = self._read_camera_metadata(metadata_path)
+            meta["backend"] = backend
+            return False, f"TimeoutExpired running {backend}: {' '.join(cmd)}", now_ros_time(self), meta
         except Exception as e:
-            meta = self._read_rpicam_metadata(metadata_path)
-            return False, f"Failed running {' '.join(cmd)}: {e}", now_ros_time(self), meta
+            meta = self._read_camera_metadata(metadata_path)
+            meta["backend"] = backend
+            return False, f"Failed running {backend} {' '.join(cmd)}: {e}", now_ros_time(self), meta
 
         ok = (p.returncode == 0) and os.path.exists(out_path) and os.path.getsize(out_path) > 0
-        meta = self._read_rpicam_metadata(metadata_path)
+        meta = self._read_camera_metadata(metadata_path)
+        meta["backend"] = backend
+        meta["returncode"] = int(p.returncode)
+        if p.stdout:
+            meta["stdout"] = p.stdout[-4000:]
+        if p.stderr:
+            meta["stderr"] = p.stderr[-4000:]
+        midpoint_ns = meta.get("exposure_midpoint_system_ns")
+        if midpoint_ns:
+            try:
+                end_stamp = _ns_to_time_msg(int(midpoint_ns))
+                meta["stamp_source"] = "exposure_midpoint_system_ns"
+            except Exception:
+                meta["stamp_source"] = "capture_done_system_clock"
+        else:
+            meta["stamp_source"] = "capture_done_system_clock"
         if ok:
             return True, "", end_stamp, meta
-        return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n", end_stamp, meta
+        return False, f"{backend} rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n", end_stamp, meta
 
     def _perform_capture_still(
         self,
@@ -3843,8 +3978,8 @@ class CaptureService(Node):
         session = session or datetime.now().strftime("%Y%m%d_%H%M%S")
         cam0_path = os.path.join(out_dir, f"{session}_cam0.jpg")
         cam1_path = os.path.join(out_dir, f"{session}_cam1.jpg")
-        cam0_rpicam_meta_path = os.path.join(out_dir, f"{session}_cam0_rpicam_meta.json")
-        cam1_rpicam_meta_path = os.path.join(out_dir, f"{session}_cam1_rpicam_meta.json")
+        cam0_camera_meta_path = os.path.join(out_dir, f"{session}_cam0_camera_meta.json")
+        cam1_camera_meta_path = os.path.join(out_dir, f"{session}_cam1_camera_meta.json")
 
         trigger_stamp = now_ros_time(self)
         self.get_logger().info(f"Capture session={session} -> {cam0_path}, {cam1_path}")
@@ -3871,19 +4006,18 @@ class CaptureService(Node):
 
         ok0 = ok1 = False
         d0 = d1 = ""
-        # rpicam-still does not publish a hardware frame stamp here. Use the
-        # process completion time as the best available per-image approximation
-        # for metadata and IMU deblur alignment.
+        # Picamera2 metadata can provide an exposure midpoint stamp; rpicam-still
+        # fallback uses process completion time as its best available stamp.
         cam0_stamp: Optional[TimeMsg] = None
         cam1_stamp: Optional[TimeMsg] = None
-        cam0_rpicam_meta: Dict[str, Any] = {
-            "path": cam0_rpicam_meta_path,
+        cam0_camera_meta: Dict[str, Any] = {
+            "path": cam0_camera_meta_path,
             "exists": False,
             "status": "not_run",
             "exposure_time_us": None,
         }
-        cam1_rpicam_meta: Dict[str, Any] = {
-            "path": cam1_rpicam_meta_path,
+        cam1_camera_meta: Dict[str, Any] = {
+            "path": cam1_camera_meta_path,
             "exists": False,
             "status": "not_run",
             "exposure_time_us": None,
@@ -3897,7 +4031,7 @@ class CaptureService(Node):
             for attempt in range(retries + 1):
                 if feedback_cb is not None:
                     feedback_cb(f"capturing_attempt_{attempt+1}")
-                for stale_path in (cam0_path, cam1_path, cam0_rpicam_meta_path, cam1_rpicam_meta_path):
+                for stale_path in (cam0_path, cam1_path, cam0_camera_meta_path, cam1_camera_meta_path):
                     try:
                         if stale_path and os.path.exists(stale_path):
                             os.remove(stale_path)
@@ -3905,89 +4039,98 @@ class CaptureService(Node):
                         pass
                 if parallel:
                     # Run both still captures in parallel (faster pause window)
-                    p0 = subprocess.Popen(
-                        self._rpicam_cmd(cam0, cam0_path, quality, cam0_rpicam_meta_path),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        env=self._preview_env(),
-                    )
-                    p1 = None
-                    if allow_cam1:
-                        p1 = subprocess.Popen(
-                            self._rpicam_cmd(cam1, cam1_path, quality, cam1_rpicam_meta_path),
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True,
-                            env=self._preview_env(),
-                        )
-                    try:
-                        out0, err0 = p0.communicate(timeout=run_timeout_s)
-                        cam0_stamp = now_ros_time(self)
-                    except subprocess.TimeoutExpired:
-                        p0.kill()
-                        out0, err0 = "", "TimeoutExpired"
-                        cam0_stamp = now_ros_time(self)
-                    out1 = err1 = ""
-                    if p1 is not None:
-                        try:
-                            out1, err1 = p1.communicate(timeout=run_timeout_s)
-                            cam1_stamp = now_ros_time(self)
-                        except subprocess.TimeoutExpired:
-                            p1.kill()
-                            out1, err1 = "", "TimeoutExpired"
-                            cam1_stamp = now_ros_time(self)
+                    results: Dict[str, Tuple[bool, str, Optional[TimeMsg], Dict[str, Any]]] = {}
 
-                    ok0 = (p0.returncode == 0) and os.path.exists(cam0_path) and os.path.getsize(cam0_path) > 0
-                    cam0_rpicam_meta = self._read_rpicam_metadata(cam0_rpicam_meta_path)
-                    if allow_cam1 and p1 is not None:
-                        ok1 = (p1.returncode == 0) and os.path.exists(cam1_path) and os.path.getsize(cam1_path) > 0
-                        cam1_rpicam_meta = self._read_rpicam_metadata(cam1_rpicam_meta_path)
+                    def run_still(
+                        key: str,
+                        cam_index: int,
+                        image_path: str,
+                        meta_path: str,
+                    ) -> None:
+                        results[key] = self._run_one(
+                            cam_index,
+                            image_path,
+                            quality,
+                            run_timeout_s,
+                            meta_path,
+                        )
+
+                    t0 = threading.Thread(
+                        target=run_still,
+                        args=("cam0", cam0, cam0_path, cam0_camera_meta_path),
+                        daemon=True,
+                    )
+                    workers = [t0]
+                    t0.start()
+                    if allow_cam1:
+                        t1 = threading.Thread(
+                            target=run_still,
+                            args=("cam1", cam1, cam1_path, cam1_camera_meta_path),
+                            daemon=True,
+                        )
+                        workers.append(t1)
+                        t1.start()
+                    for t in workers:
+                        t.join(run_timeout_s + 2.0)
+
+                    ok0, d0, cam0_stamp, cam0_camera_meta = results.get(
+                        "cam0",
+                        (
+                            False,
+                            "cam0 capture thread did not finish",
+                            None,
+                            self._read_camera_metadata(cam0_camera_meta_path),
+                        ),
+                    )
+                    if allow_cam1:
+                        ok1, d1, cam1_stamp, cam1_camera_meta = results.get(
+                            "cam1",
+                            (
+                                False,
+                                "cam1 capture thread did not finish",
+                                None,
+                                self._read_camera_metadata(cam1_camera_meta_path),
+                            ),
+                        )
                     else:
                         ok1 = True
                         cam1_stamp = None
-                        cam1_rpicam_meta = {
-                            "path": cam1_rpicam_meta_path,
+                        cam1_camera_meta = {
+                            "path": cam1_camera_meta_path,
                             "exists": False,
                             "status": "skipped",
                             "exposure_time_us": None,
                         }
-                    if not ok0:
-                        d0 = f"attempt={attempt+1}/{retries+1} cam=0 rc={p0.returncode}\nstdout:\n{out0}\nstderr:\n{err0}\n"
-                        cam0_stamp = None
-                    if allow_cam1 and not ok1 and p1 is not None:
-                        d1 = f"attempt={attempt+1}/{retries+1} cam=1 rc={p1.returncode}\nstdout:\n{out1}\nstderr:\n{err1}\n"
-                        cam1_stamp = None
                 else:
-                    ok0, d0, cam0_stamp, cam0_rpicam_meta = self._run_one(
+                    ok0, d0, cam0_stamp, cam0_camera_meta = self._run_one(
                         cam0,
                         cam0_path,
                         quality,
                         run_timeout_s,
-                        cam0_rpicam_meta_path,
+                        cam0_camera_meta_path,
                     )
                     if allow_cam1:
-                        ok1, d1, cam1_stamp, cam1_rpicam_meta = self._run_one(
+                        ok1, d1, cam1_stamp, cam1_camera_meta = self._run_one(
                             cam1,
                             cam1_path,
                             quality,
                             run_timeout_s,
-                            cam1_rpicam_meta_path,
+                            cam1_camera_meta_path,
                         )
                     else:
                         ok1 = True
                         cam1_stamp = None
-                        cam1_rpicam_meta = {
-                            "path": cam1_rpicam_meta_path,
+                        cam1_camera_meta = {
+                            "path": cam1_camera_meta_path,
                             "exists": False,
                             "status": "skipped",
                             "exposure_time_us": None,
                         }
 
-                    if not ok0:
-                        cam0_stamp = None
-                    if not ok1:
-                        cam1_stamp = None
+                if not ok0:
+                    cam0_stamp = None
+                if not ok1:
+                    cam1_stamp = None
 
                 if ok0 and ok1:
                     break
@@ -4046,8 +4189,8 @@ class CaptureService(Node):
             quality,
             gyro_samples,
             camera_name="cam0",
-            exposure_time_us=cam0_rpicam_meta.get("exposure_time_us"),
-            capture_metadata=cam0_rpicam_meta,
+            exposure_time_us=cam0_camera_meta.get("exposure_time_us"),
+            capture_metadata=cam0_camera_meta,
         )
         cam1_deblur = self._deblur_capture_image(
             cam1_path,
@@ -4055,8 +4198,8 @@ class CaptureService(Node):
             quality,
             gyro_samples,
             camera_name="cam1",
-            exposure_time_us=cam1_rpicam_meta.get("exposure_time_us"),
-            capture_metadata=cam1_rpicam_meta,
+            exposure_time_us=cam1_camera_meta.get("exposure_time_us"),
+            capture_metadata=cam1_camera_meta,
         )
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
@@ -4070,8 +4213,8 @@ class CaptureService(Node):
                 "trigger_stamp": _stamp_to_str(trigger_stamp),
                 "cam0_stamp": _stamp_to_str(cam0_stamp) if cam0_stamp is not None else None,
                 "cam1_stamp": _stamp_to_str(cam1_stamp) if cam1_stamp is not None else None,
-                "cam0_rpicam_metadata": cam0_rpicam_meta,
-                "cam1_rpicam_metadata": cam1_rpicam_meta,
+                "cam0_camera_metadata": cam0_camera_meta,
+                "cam1_camera_metadata": cam1_camera_meta,
                 "cam0_deblur": cam0_deblur,
                 "cam1_deblur": cam1_deblur,
             }
@@ -4088,8 +4231,8 @@ class CaptureService(Node):
                 cam1_stamp=cam1_stamp,
                 cam0_deblur=cam0_deblur,
                 cam1_deblur=cam1_deblur,
-                cam0_capture_metadata=cam0_rpicam_meta,
-                cam1_capture_metadata=cam1_rpicam_meta,
+                cam0_capture_metadata=cam0_camera_meta,
+                cam1_capture_metadata=cam1_camera_meta,
             )
             if bool(self.get_parameter("write_trajectory_csv").value):
                 try:

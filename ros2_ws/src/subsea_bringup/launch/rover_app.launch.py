@@ -46,6 +46,7 @@ def generate_launch_description():
     capture_warmup_ms = LaunchConfiguration('capture_warmup_ms')
     capture_timeout_ms = LaunchConfiguration('capture_timeout_ms')
     capture_pause_previews = LaunchConfiguration('capture_pause_previews')
+    still_capture_backend = LaunchConfiguration('still_capture_backend')
     capture_awb = LaunchConfiguration('capture_awb')
     capture_awbgains = LaunchConfiguration('capture_awbgains')
     capture_saturation = LaunchConfiguration('capture_saturation')
@@ -367,6 +368,7 @@ def generate_launch_description():
             'capture_awb': capture_awb,
             'capture_awbgains': capture_awbgains,
             'capture_saturation': capture_saturation_float,
+            'still_capture_backend': still_capture_backend,
 
             # Preview pause/resume
             'manage_previews': manage_previews_bool,
@@ -539,6 +541,8 @@ def generate_launch_description():
         DeclareLaunchArgument('capture_warmup_ms', default_value='700'),
         DeclareLaunchArgument('capture_timeout_ms', default_value='1500'),
         DeclareLaunchArgument('capture_pause_previews', default_value='true'),
+        DeclareLaunchArgument('still_capture_backend', default_value='auto',
+                              description='Still capture backend: auto, picamera2, or rpicam'),
         DeclareLaunchArgument('capture_awb', default_value=''),
         DeclareLaunchArgument('capture_awbgains', default_value=''),
         DeclareLaunchArgument('capture_saturation', default_value='1.0'),

@@ -178,12 +178,6 @@ class Bno085ImuNode(Node):
                 f"(cached_reads={supports_cached}) "
                 f"(timestamp_mode={self._stamp_mode})"
             )
-            if self._rate_hz >= 50.0:
-                self.get_logger().info(
-                    "Tip: for reliable high-rate I2C add "
-                    "'dtparam=i2c_arm_baudrate=400000' to /boot/firmware/config.txt and reboot. "
-                    "Default 100 kHz bus limits sustainable read rate to ~30 Hz."
-                )
         except Exception as e:
             with self._sensor_lock:
                 self._sensor = None

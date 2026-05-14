@@ -71,6 +71,10 @@ FIELD_LAUNCH_ARGS=(
   "deblur_exposure_time_us:=0"
   "deblur_image_stamp_reference:=midpoint"
   "deblur_timestamp_source:=pps_disciplined_system_clock"
+  # Tune these after offset testing if the IMU blur direction feels time-shifted.
+  "deblur_timestamp_offset_ms:=0.0"
+  "deblur_cam0_timestamp_offset_ms:=0.0"
+  "deblur_cam1_timestamp_offset_ms:=0.0"
   "deblur_require_time_reference:=true"
   "deblur_max_time_reference_age_ms:=2000.0"
   "deblur_fov_deg:=72.0"
@@ -79,6 +83,12 @@ FIELD_LAUNCH_ARGS=(
   "deblur_max_kernel_px:=31"
   "deblur_iterations:=12"
   "deblur_wiener_snr:=40.0"
+  "deblur_gyro_bias_enable:=true"
+  "deblur_gyro_bias_window_s:=2.0"
+  "deblur_gyro_bias_min_samples:=25"
+  "deblur_gyro_bias_stationary_max_rate_rad_s:=0.025"
+  "deblur_gyro_bias_stationary_max_std_rad_s:=0.010"
+  "deblur_gyro_bias_max_age_s:=30.0"
   "deblur_use_rig_extrinsics:=true"
   # Rig frame: +X cam0->cam1, +Y camera viewing direction, +Z up. Values are meters.
   "rig_imu_position_m:=0.080,0.000,0.020"

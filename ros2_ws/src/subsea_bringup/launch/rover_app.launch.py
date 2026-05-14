@@ -76,6 +76,9 @@ def generate_launch_description():
     deblur_exposure_time_us = LaunchConfiguration('deblur_exposure_time_us')
     deblur_image_stamp_reference = LaunchConfiguration('deblur_image_stamp_reference')
     deblur_timestamp_source = LaunchConfiguration('deblur_timestamp_source')
+    deblur_timestamp_offset_ms = LaunchConfiguration('deblur_timestamp_offset_ms')
+    deblur_cam0_timestamp_offset_ms = LaunchConfiguration('deblur_cam0_timestamp_offset_ms')
+    deblur_cam1_timestamp_offset_ms = LaunchConfiguration('deblur_cam1_timestamp_offset_ms')
     deblur_fov_deg = LaunchConfiguration('deblur_fov_deg')
     deblur_strength = LaunchConfiguration('deblur_strength')
     deblur_min_kernel_px = LaunchConfiguration('deblur_min_kernel_px')
@@ -83,6 +86,12 @@ def generate_launch_description():
     deblur_iterations = LaunchConfiguration('deblur_iterations')
     deblur_method = LaunchConfiguration('deblur_method')
     deblur_wiener_snr = LaunchConfiguration('deblur_wiener_snr')
+    deblur_gyro_bias_enable = LaunchConfiguration('deblur_gyro_bias_enable')
+    deblur_gyro_bias_window_s = LaunchConfiguration('deblur_gyro_bias_window_s')
+    deblur_gyro_bias_min_samples = LaunchConfiguration('deblur_gyro_bias_min_samples')
+    deblur_gyro_bias_stationary_max_rate_rad_s = LaunchConfiguration('deblur_gyro_bias_stationary_max_rate_rad_s')
+    deblur_gyro_bias_stationary_max_std_rad_s = LaunchConfiguration('deblur_gyro_bias_stationary_max_std_rad_s')
+    deblur_gyro_bias_max_age_s = LaunchConfiguration('deblur_gyro_bias_max_age_s')
     deblur_imu_to_cam_yaw_deg = LaunchConfiguration('deblur_imu_to_cam_yaw_deg')
     deblur_use_rig_extrinsics = LaunchConfiguration('deblur_use_rig_extrinsics')
     rig_imu_position_m = LaunchConfiguration('rig_imu_position_m')
@@ -138,12 +147,21 @@ def generate_launch_description():
     enable_motion_deblur_bool = ParameterValue(enable_motion_deblur, value_type=bool)
     deblur_exposure_ms_float = ParameterValue(deblur_exposure_ms, value_type=float)
     deblur_exposure_time_us_int = ParameterValue(deblur_exposure_time_us, value_type=int)
+    deblur_timestamp_offset_ms_float = ParameterValue(deblur_timestamp_offset_ms, value_type=float)
+    deblur_cam0_timestamp_offset_ms_float = ParameterValue(deblur_cam0_timestamp_offset_ms, value_type=float)
+    deblur_cam1_timestamp_offset_ms_float = ParameterValue(deblur_cam1_timestamp_offset_ms, value_type=float)
     deblur_fov_deg_float = ParameterValue(deblur_fov_deg, value_type=float)
     deblur_strength_float = ParameterValue(deblur_strength, value_type=float)
     deblur_min_kernel_px_float = ParameterValue(deblur_min_kernel_px, value_type=float)
     deblur_max_kernel_px_int = ParameterValue(deblur_max_kernel_px, value_type=int)
     deblur_iterations_int = ParameterValue(deblur_iterations, value_type=int)
     deblur_wiener_snr_float = ParameterValue(deblur_wiener_snr, value_type=float)
+    deblur_gyro_bias_enable_bool = ParameterValue(deblur_gyro_bias_enable, value_type=bool)
+    deblur_gyro_bias_window_s_float = ParameterValue(deblur_gyro_bias_window_s, value_type=float)
+    deblur_gyro_bias_min_samples_int = ParameterValue(deblur_gyro_bias_min_samples, value_type=int)
+    deblur_gyro_bias_stationary_max_rate_rad_s_float = ParameterValue(deblur_gyro_bias_stationary_max_rate_rad_s, value_type=float)
+    deblur_gyro_bias_stationary_max_std_rad_s_float = ParameterValue(deblur_gyro_bias_stationary_max_std_rad_s, value_type=float)
+    deblur_gyro_bias_max_age_s_float = ParameterValue(deblur_gyro_bias_max_age_s, value_type=float)
     deblur_imu_to_cam_yaw_deg_float = ParameterValue(deblur_imu_to_cam_yaw_deg, value_type=float)
     deblur_use_rig_extrinsics_bool = ParameterValue(deblur_use_rig_extrinsics, value_type=bool)
     deblur_use_translation_bool = ParameterValue(deblur_use_translation, value_type=bool)
@@ -378,6 +396,9 @@ def generate_launch_description():
             'deblur_exposure_time_us': deblur_exposure_time_us_int,
             'deblur_image_stamp_reference': deblur_image_stamp_reference,
             'deblur_timestamp_source': deblur_timestamp_source,
+            'deblur_timestamp_offset_ms': deblur_timestamp_offset_ms_float,
+            'deblur_cam0_timestamp_offset_ms': deblur_cam0_timestamp_offset_ms_float,
+            'deblur_cam1_timestamp_offset_ms': deblur_cam1_timestamp_offset_ms_float,
             'deblur_fov_deg': deblur_fov_deg_float,
             'deblur_strength': deblur_strength_float,
             'deblur_min_kernel_px': deblur_min_kernel_px_float,
@@ -385,6 +406,12 @@ def generate_launch_description():
             'deblur_iterations': deblur_iterations_int,
             'deblur_method': deblur_method,
             'deblur_wiener_snr': deblur_wiener_snr_float,
+            'deblur_gyro_bias_enable': deblur_gyro_bias_enable_bool,
+            'deblur_gyro_bias_window_s': deblur_gyro_bias_window_s_float,
+            'deblur_gyro_bias_min_samples': deblur_gyro_bias_min_samples_int,
+            'deblur_gyro_bias_stationary_max_rate_rad_s': deblur_gyro_bias_stationary_max_rate_rad_s_float,
+            'deblur_gyro_bias_stationary_max_std_rad_s': deblur_gyro_bias_stationary_max_std_rad_s_float,
+            'deblur_gyro_bias_max_age_s': deblur_gyro_bias_max_age_s_float,
             'deblur_imu_to_cam_yaw_deg': deblur_imu_to_cam_yaw_deg_float,
             'deblur_use_rig_extrinsics': deblur_use_rig_extrinsics_bool,
             'rig_imu_position_m': rig_imu_position_m,
@@ -542,6 +569,12 @@ def generate_launch_description():
         DeclareLaunchArgument('deblur_exposure_time_us', default_value='0'),
         DeclareLaunchArgument('deblur_image_stamp_reference', default_value='midpoint'),
         DeclareLaunchArgument('deblur_timestamp_source', default_value='pps_disciplined_system_clock'),
+        DeclareLaunchArgument('deblur_timestamp_offset_ms', default_value='0.0',
+                              description='Common offset added to image timestamps before IMU integration'),
+        DeclareLaunchArgument('deblur_cam0_timestamp_offset_ms', default_value='0.0',
+                              description='Extra cam0 timestamp offset added before IMU integration'),
+        DeclareLaunchArgument('deblur_cam1_timestamp_offset_ms', default_value='0.0',
+                              description='Extra cam1 timestamp offset added before IMU integration'),
         DeclareLaunchArgument('deblur_fov_deg', default_value='72.0'),
         DeclareLaunchArgument('deblur_strength', default_value='1.0'),
         DeclareLaunchArgument('deblur_min_kernel_px', default_value='1.2'),
@@ -551,6 +584,13 @@ def generate_launch_description():
                               description='Deblur algorithm: richardson_lucy or wiener'),
         DeclareLaunchArgument('deblur_wiener_snr', default_value='40.0',
                               description='Wiener SNR (power ratio, higher=sharper). Only used when deblur_method=wiener'),
+        DeclareLaunchArgument('deblur_gyro_bias_enable', default_value='true',
+                              description='Estimate and subtract gyro bias while the rover is stationary'),
+        DeclareLaunchArgument('deblur_gyro_bias_window_s', default_value='2.0'),
+        DeclareLaunchArgument('deblur_gyro_bias_min_samples', default_value='25'),
+        DeclareLaunchArgument('deblur_gyro_bias_stationary_max_rate_rad_s', default_value='0.025'),
+        DeclareLaunchArgument('deblur_gyro_bias_stationary_max_std_rad_s', default_value='0.010'),
+        DeclareLaunchArgument('deblur_gyro_bias_max_age_s', default_value='30.0'),
         DeclareLaunchArgument('deblur_imu_to_cam_yaw_deg', default_value='0.0',
                               description='Extra degrees CCW to rotate the final image-plane blur vector for sign testing'),
         DeclareLaunchArgument('deblur_use_rig_extrinsics', default_value='true',

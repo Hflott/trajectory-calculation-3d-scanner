@@ -315,6 +315,47 @@ def _parse_float_sequence(value: Any, expected: int, default: List[float]) -> Li
         return [float(x) for x in default]
 
 
+def _float_sequence_csv(values: List[float]) -> str:
+    return ",".join(f"{float(v):.6g}" for v in values)
+
+
+def _find_numeric_key(obj: Any, key_names: Tuple[str, ...]) -> Optional[float]:
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if str(key).lower() in key_names:
+                try:
+                    return float(value)
+                except Exception:
+                    pass
+        for value in obj.values():
+            found = _find_numeric_key(value, key_names)
+            if found is not None:
+                return found
+    elif isinstance(obj, list):
+        for value in obj:
+            found = _find_numeric_key(value, key_names)
+            if found is not None:
+                return found
+    return None
+
+
+def _extract_exposure_time_us(metadata: Any) -> Optional[int]:
+    value = _find_numeric_key(
+        metadata,
+        (
+            "exposuretime",
+            "exposure_time",
+            "exposure_time_us",
+            "exposuretimeus",
+            "sensor.exposuretime",
+        ),
+    )
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
+    # rpicam metadata reports ExposureTime in microseconds.
+    return int(round(value))
+
+
 def _vec3_to_list(v: Any) -> List[float]:
     arr = np.asarray(v, dtype=np.float64).reshape(3)
     return [float(arr[0]), float(arr[1]), float(arr[2])]
@@ -524,6 +565,9 @@ class CaptureService(Node):
         self.declare_parameter("deblur_exposure_time_us", 0)
         self.declare_parameter("deblur_image_stamp_reference", "midpoint")  # midpoint|start|end
         self.declare_parameter("deblur_timestamp_source", "pps_disciplined_system_clock")
+        self.declare_parameter("deblur_timestamp_offset_ms", 0.0)
+        self.declare_parameter("deblur_cam0_timestamp_offset_ms", 0.0)
+        self.declare_parameter("deblur_cam1_timestamp_offset_ms", 0.0)
         self.declare_parameter("deblur_fov_deg", 72.0)
         self.declare_parameter("deblur_strength", 1.0)
         self.declare_parameter("deblur_min_kernel_px", 1.2)
@@ -531,16 +575,22 @@ class CaptureService(Node):
         self.declare_parameter("deblur_iterations", 12)
         self.declare_parameter("deblur_method", "richardson_lucy")  # richardson_lucy|wiener
         self.declare_parameter("deblur_wiener_snr", 40.0)
+        self.declare_parameter("deblur_gyro_bias_enable", True)
+        self.declare_parameter("deblur_gyro_bias_window_s", 2.0)
+        self.declare_parameter("deblur_gyro_bias_min_samples", 25)
+        self.declare_parameter("deblur_gyro_bias_stationary_max_rate_rad_s", 0.025)
+        self.declare_parameter("deblur_gyro_bias_stationary_max_std_rad_s", 0.010)
+        self.declare_parameter("deblur_gyro_bias_max_age_s", 30.0)
         self.declare_parameter("deblur_imu_to_cam_yaw_deg", 0.0)
         self.declare_parameter("deblur_use_rig_extrinsics", True)
-        self.declare_parameter("rig_imu_position_m", DEFAULT_RIG_IMU_POSITION_M)
-        self.declare_parameter("rig_cam0_position_m", DEFAULT_RIG_CAM0_POSITION_M)
-        self.declare_parameter("rig_cam1_position_m", DEFAULT_RIG_CAM1_POSITION_M)
-        self.declare_parameter("rig_gnss_left_position_m", DEFAULT_RIG_GNSS_LEFT_POSITION_M)
-        self.declare_parameter("rig_gnss_right_position_m", DEFAULT_RIG_GNSS_RIGHT_POSITION_M)
-        self.declare_parameter("rig_imu_to_base_rotation", DEFAULT_RIG_IMU_TO_BASE_ROTATION)
-        self.declare_parameter("rig_cam0_base_to_camera_rotation", DEFAULT_RIG_BASE_TO_CAMERA_ROTATION)
-        self.declare_parameter("rig_cam1_base_to_camera_rotation", DEFAULT_RIG_BASE_TO_CAMERA_ROTATION)
+        self.declare_parameter("rig_imu_position_m", _float_sequence_csv(DEFAULT_RIG_IMU_POSITION_M))
+        self.declare_parameter("rig_cam0_position_m", _float_sequence_csv(DEFAULT_RIG_CAM0_POSITION_M))
+        self.declare_parameter("rig_cam1_position_m", _float_sequence_csv(DEFAULT_RIG_CAM1_POSITION_M))
+        self.declare_parameter("rig_gnss_left_position_m", _float_sequence_csv(DEFAULT_RIG_GNSS_LEFT_POSITION_M))
+        self.declare_parameter("rig_gnss_right_position_m", _float_sequence_csv(DEFAULT_RIG_GNSS_RIGHT_POSITION_M))
+        self.declare_parameter("rig_imu_to_base_rotation", _float_sequence_csv(DEFAULT_RIG_IMU_TO_BASE_ROTATION))
+        self.declare_parameter("rig_cam0_base_to_camera_rotation", _float_sequence_csv(DEFAULT_RIG_BASE_TO_CAMERA_ROTATION))
+        self.declare_parameter("rig_cam1_base_to_camera_rotation", _float_sequence_csv(DEFAULT_RIG_BASE_TO_CAMERA_ROTATION))
         self.declare_parameter("deblur_use_translation", False)
         self.declare_parameter("deblur_assumed_depth_m", 1.5)
         self.declare_parameter("deblur_max_odom_age_ms", 200.0)
@@ -669,6 +719,10 @@ class CaptureService(Node):
         self._buf_imu: Deque[Imu] = deque(maxlen=self._sensor_max_samples)
         self._buf_odom_local: Deque[Odometry] = deque(maxlen=self._sensor_max_samples)
         self._buf_odom_global: Deque[Odometry] = deque(maxlen=self._sensor_max_samples)
+        self._gyro_bias: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+        self._gyro_bias_stamp_ns: Optional[int] = None
+        self._gyro_bias_diag: Dict[str, Any] = {"status": "uninitialized"}
+        self._next_gyro_bias_update_mono = 0.0
         self._sensor_keep_s = max(2.0, float(self.get_parameter("sensor_buffer_s").value))
         self._sensor_trim_period_s = 0.25
         self._next_sensor_trim_mono = 0.0
@@ -1758,6 +1812,7 @@ class CaptureService(Node):
         with self._sensor_lock:
             self._buf_imu.append(msg)
             self._trim_sensor_buffers_locked()
+            self._update_gyro_bias_locked(_stamp_to_ns(msg.header.stamp))
 
     def _on_odom_local(self, msg: Odometry) -> None:
         with self._sensor_lock:
@@ -2180,8 +2235,10 @@ class CaptureService(Node):
         os.replace(tmp, csv_path)
         return csv_path
 
-    def _deblur_exposure_s(self) -> Tuple[float, int]:
-        exposure_us = int(self.get_parameter("deblur_exposure_time_us").value)
+    def _deblur_exposure_s(self, exposure_time_us_override: Optional[int] = None) -> Tuple[float, int]:
+        exposure_us = int(exposure_time_us_override or 0)
+        if exposure_us <= 0:
+            exposure_us = int(self.get_parameter("deblur_exposure_time_us").value)
         if exposure_us <= 0:
             exposure_ms = max(0.1, _safe_float(self.get_parameter("deblur_exposure_ms").value, 8.0))
             exposure_us = int(round(exposure_ms * 1000.0))
@@ -2209,6 +2266,12 @@ class CaptureService(Node):
         if t1_ns <= t0_ns:
             t1_ns = t0_ns + 1
         return t0_ns, t1_ns
+
+    def _deblur_timestamp_offset_ms_for_camera(self, camera_name: str) -> float:
+        cam = "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0"
+        common_ms = _safe_float(self.get_parameter("deblur_timestamp_offset_ms").value, 0.0)
+        cam_ms = _safe_float(self.get_parameter(f"deblur_{cam}_timestamp_offset_ms").value, 0.0)
+        return float(common_ms + cam_ms)
 
     def _gyro_samples_snapshot(self) -> List[GyroSample]:
         with self._sensor_lock:
@@ -2239,6 +2302,106 @@ class CaptureService(Node):
             else:
                 dedup.append((t_ns, w))
         return dedup
+
+    def _update_gyro_bias_locked(self, latest_ns: int) -> None:
+        if latest_ns <= 0:
+            return
+        if not bool(self.get_parameter("deblur_gyro_bias_enable").value):
+            self._gyro_bias_diag = {"status": "disabled"}
+            return
+        now_m = time.monotonic()
+        if now_m < self._next_gyro_bias_update_mono:
+            return
+        self._next_gyro_bias_update_mono = now_m + 0.25
+
+        window_s = max(0.25, _safe_float(self.get_parameter("deblur_gyro_bias_window_s").value, 2.0))
+        min_samples = max(5, int(self.get_parameter("deblur_gyro_bias_min_samples").value))
+        max_rate = max(
+            0.0,
+            _safe_float(self.get_parameter("deblur_gyro_bias_stationary_max_rate_rad_s").value, 0.025),
+        )
+        max_std = max(
+            0.0,
+            _safe_float(self.get_parameter("deblur_gyro_bias_stationary_max_std_rad_s").value, 0.010),
+        )
+
+        cutoff_ns = int(latest_ns - window_s * 1_000_000_000.0)
+        rows: List[Tuple[float, float, float]] = []
+        t_min: Optional[int] = None
+        t_max: Optional[int] = None
+        for msg in self._buf_imu:
+            t_ns = _stamp_to_ns(msg.header.stamp)
+            if t_ns < cutoff_ns or t_ns > latest_ns:
+                continue
+            rows.append((
+                float(msg.angular_velocity.x),
+                float(msg.angular_velocity.y),
+                float(msg.angular_velocity.z),
+            ))
+            if t_min is None or t_ns < t_min:
+                t_min = t_ns
+            if t_max is None or t_ns > t_max:
+                t_max = t_ns
+
+        if len(rows) < min_samples:
+            self._gyro_bias_diag = {
+                "status": "not_enough_samples",
+                "samples": int(len(rows)),
+                "min_samples": int(min_samples),
+                "window_s": float(window_s),
+            }
+            return
+
+        arr = np.asarray(rows, dtype=np.float64)
+        mean = arr.mean(axis=0)
+        centered = arr - mean
+        std_axis = centered.std(axis=0)
+        mean_norm = float(np.linalg.norm(mean))
+        std_norm = float(np.sqrt(np.mean(np.sum(centered * centered, axis=1))))
+        stationary = bool(mean_norm <= max_rate and std_norm <= max_std)
+        diag = {
+            "status": "stationary" if stationary else "motion_detected",
+            "samples": int(len(rows)),
+            "window_s": float(window_s),
+            "time_min": _ns_to_stamp_str(t_min) if t_min is not None else None,
+            "time_max": _ns_to_stamp_str(t_max) if t_max is not None else None,
+            "mean_rad_s": _vec3_to_list(mean),
+            "mean_norm_rad_s": mean_norm,
+            "std_rad_s": _vec3_to_list(std_axis),
+            "std_norm_rad_s": std_norm,
+            "stationary_max_rate_rad_s": float(max_rate),
+            "stationary_max_std_rad_s": float(max_std),
+        }
+        self._gyro_bias_diag = diag
+        if stationary:
+            self._gyro_bias = (float(mean[0]), float(mean[1]), float(mean[2]))
+            self._gyro_bias_stamp_ns = int(latest_ns)
+
+    def _gyro_bias_for_interval(self, center_ns: int) -> Tuple[Tuple[float, float, float], Dict[str, Any]]:
+        if not bool(self.get_parameter("deblur_gyro_bias_enable").value):
+            return (0.0, 0.0, 0.0), {"enabled": False, "status": "disabled"}
+        max_age_s = max(0.0, _safe_float(self.get_parameter("deblur_gyro_bias_max_age_s").value, 30.0))
+        with self._sensor_lock:
+            bias = tuple(float(x) for x in self._gyro_bias)
+            stamp_ns = self._gyro_bias_stamp_ns
+            last_diag = dict(self._gyro_bias_diag)
+        diag: Dict[str, Any] = {
+            "enabled": True,
+            "bias_rad_s": [float(bias[0]), float(bias[1]), float(bias[2])],
+            "last_estimator": last_diag,
+            "max_age_s": float(max_age_s),
+        }
+        if stamp_ns is None:
+            diag["status"] = "no_stationary_bias"
+            return (0.0, 0.0, 0.0), diag
+        age_s = abs(float(center_ns - int(stamp_ns)) / 1_000_000_000.0)
+        diag["stamp"] = _ns_to_stamp_str(int(stamp_ns))
+        diag["age_s"] = age_s
+        if max_age_s > 0.0 and age_s > max_age_s:
+            diag["status"] = "stale_bias"
+            return (0.0, 0.0, 0.0), diag
+        diag["status"] = "applied"
+        return bias, diag
 
     def _interp_gyro_from_sorted(
         self,
@@ -2321,9 +2484,13 @@ class CaptureService(Node):
             out["status"] = "not_enough_interval_samples"
             return out
 
+        bias, bias_diag = self._gyro_bias_for_interval((int(t0_ns) + int(t1_ns)) // 2)
         dtheta_x = 0.0
         dtheta_y = 0.0
         dtheta_z = 0.0
+        dtheta_raw_x = 0.0
+        dtheta_raw_y = 0.0
+        dtheta_raw_z = 0.0
         max_step_s = 0.0
         for i in range(1, len(dedup)):
             t_a, w_a = dedup[i - 1]
@@ -2333,9 +2500,12 @@ class CaptureService(Node):
                 continue
             if dt_s > max_step_s:
                 max_step_s = dt_s
-            dtheta_x += 0.5 * (w_a[0] + w_b[0]) * dt_s
-            dtheta_y += 0.5 * (w_a[1] + w_b[1]) * dt_s
-            dtheta_z += 0.5 * (w_a[2] + w_b[2]) * dt_s
+            dtheta_raw_x += 0.5 * (w_a[0] + w_b[0]) * dt_s
+            dtheta_raw_y += 0.5 * (w_a[1] + w_b[1]) * dt_s
+            dtheta_raw_z += 0.5 * (w_a[2] + w_b[2]) * dt_s
+            dtheta_x += 0.5 * ((w_a[0] - bias[0]) + (w_b[0] - bias[0])) * dt_s
+            dtheta_y += 0.5 * ((w_a[1] - bias[1]) + (w_b[1] - bias[1])) * dt_s
+            dtheta_z += 0.5 * ((w_a[2] - bias[2]) + (w_b[2] - bias[2])) * dt_s
 
         if max_step_s <= 0.0:
             out["status"] = "invalid_interval_dt"
@@ -2360,6 +2530,8 @@ class CaptureService(Node):
                     "max_step_ms": max_step_ms,
                     "max_step_limit_ms": float(max_gap_limit_ms),
                     "max_step_exceeds_limit": True,
+                    "gyro_bias": bias_diag,
+                    "delta_theta_raw_rad": [float(dtheta_raw_x), float(dtheta_raw_y), float(dtheta_raw_z)],
                     "delta_theta_rad": [float(dtheta_x), float(dtheta_y), float(dtheta_z)],
                 }
             )
@@ -2376,6 +2548,8 @@ class CaptureService(Node):
                 "max_step_ms": max_step_ms,
                 "max_step_limit_ms": float(max_gap_limit_ms),
                 "max_step_exceeds_limit": False,
+                "gyro_bias": bias_diag,
+                "delta_theta_raw_rad": [float(dtheta_raw_x), float(dtheta_raw_y), float(dtheta_raw_z)],
                 "delta_theta_rad": [float(dtheta_x), float(dtheta_y), float(dtheta_z)],
             }
         )
@@ -2463,9 +2637,14 @@ class CaptureService(Node):
         width: int,
         gyro_samples: Optional[List[GyroSample]] = None,
         camera_name: str = "cam0",
+        exposure_time_us_override: Optional[int] = None,
     ) -> Tuple[float, float, Dict[str, Any]]:
-        exposure_s, exposure_us = self._deblur_exposure_s()
+        exposure_s, exposure_us = self._deblur_exposure_s(exposure_time_us_override)
         stamp_ref = self._deblur_stamp_reference()
+        camera_key = "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0"
+        raw_stamp_ns = int(stamp_ns)
+        timestamp_offset_ms = self._deblur_timestamp_offset_ms_for_camera(camera_key)
+        stamp_ns = int(raw_stamp_ns + round(timestamp_offset_ms * 1_000_000.0))
         t0_ns, t1_ns = self._deblur_exposure_window_ns(stamp_ns, exposure_us, stamp_ref)
         fov_deg = _clamp(_safe_float(self.get_parameter("deblur_fov_deg").value, 72.0), 20.0, 179.0)
         strength = max(0.0, _safe_float(self.get_parameter("deblur_strength").value, 1.0))
@@ -2477,16 +2656,18 @@ class CaptureService(Node):
             0.0,
             _safe_float(self.get_parameter("deblur_max_time_reference_age_ms").value, 2000.0),
         )
-        camera_key = "cam1" if str(camera_name).strip().lower() == "cam1" else "cam0"
 
         diag: Dict[str, Any] = {
             "status": "missing_imu",
             "camera": camera_key,
             "timestamp_source": timestamp_source,
             "image_stamp": _ns_to_stamp_str(stamp_ns),
+            "image_stamp_raw": _ns_to_stamp_str(raw_stamp_ns),
+            "timestamp_offset_ms": float(timestamp_offset_ms),
             "image_stamp_reference": stamp_ref,
             "exposure_time_us": int(exposure_us),
             "exposure_ms": float(exposure_s * 1000.0),
+            "exposure_source": "rpicam_metadata" if exposure_time_us_override else "configured",
             "exposure_start": _ns_to_stamp_str(t0_ns),
             "exposure_end": _ns_to_stamp_str(t1_ns),
             "fov_deg": float(fov_deg),
@@ -2689,6 +2870,8 @@ class CaptureService(Node):
         quality: int,
         gyro_samples: Optional[List[GyroSample]] = None,
         camera_name: str = "cam0",
+        exposure_time_us: Optional[int] = None,
+        capture_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         info: Dict[str, Any] = {
             "enabled": bool(self.get_parameter("enable_motion_deblur").value),
@@ -2696,6 +2879,8 @@ class CaptureService(Node):
             "path": "",
             "status": "disabled",
         }
+        if capture_metadata is not None:
+            info["capture_metadata"] = capture_metadata
         if not info["enabled"]:
             return info
         if not img_path:
@@ -2728,6 +2913,7 @@ class CaptureService(Node):
             int(img.shape[1]),
             gyro_samples,
             camera_name=info["camera"],
+            exposure_time_us_override=exposure_time_us,
         )
         info.update(diag)
         info["kernel_length_px"] = float(length_px)
@@ -2947,6 +3133,8 @@ class CaptureService(Node):
         cam1_stamp: Optional[TimeMsg],
         cam0_deblur: Optional[Dict[str, Any]] = None,
         cam1_deblur: Optional[Dict[str, Any]] = None,
+        cam0_capture_metadata: Optional[Dict[str, Any]] = None,
+        cam1_capture_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         trigger_ns = _stamp_to_ns(trigger_stamp)
         metadata: Dict[str, Any] = {
@@ -2958,6 +3146,12 @@ class CaptureService(Node):
                 "image_timestamp_source": str(self.get_parameter("deblur_timestamp_source").value).strip()
                 or "unknown",
                 "image_stamp_reference": self._deblur_stamp_reference(),
+                "common_deblur_timestamp_offset_ms": _safe_float(
+                    self.get_parameter("deblur_timestamp_offset_ms").value,
+                    0.0,
+                ),
+                "cam0_deblur_timestamp_offset_ms": self._deblur_timestamp_offset_ms_for_camera("cam0"),
+                "cam1_deblur_timestamp_offset_ms": self._deblur_timestamp_offset_ms_for_camera("cam1"),
             },
             "rig_extrinsics": self._rig_metadata(),
             "cameras": {},
@@ -2973,23 +3167,40 @@ class CaptureService(Node):
             "cam0": cam0_deblur,
             "cam1": cam1_deblur,
         }
+        capture_meta_by_cam: Dict[str, Optional[Dict[str, Any]]] = {
+            "cam0": cam0_capture_metadata,
+            "cam1": cam1_capture_metadata,
+        }
 
         def add_camera(name: str, path: str, stamp: Optional[TimeMsg]) -> None:
             if not path:
                 return
-            exposure_us = self._deblur_exposure_s()[1]
+            capture_meta = capture_meta_by_cam.get(name)
+            exposure_override = None
+            if capture_meta is not None:
+                try:
+                    exposure_override = int(capture_meta.get("exposure_time_us") or 0)
+                except Exception:
+                    exposure_override = None
+            exposure_us = self._deblur_exposure_s(exposure_override)[1]
             info: Dict[str, Any] = {
                 "path": path,
                 "stamp": _stamp_to_str(stamp) if stamp is not None else None,
                 "timestamp_source": str(self.get_parameter("deblur_timestamp_source").value).strip() or "unknown",
                 "exposure_time_us": int(exposure_us),
+                "exposure_source": "rpicam_metadata" if exposure_override else "configured",
                 "stamp_reference": self._deblur_stamp_reference(),
+                "deblur_timestamp_offset_ms": self._deblur_timestamp_offset_ms_for_camera(name),
             }
             deblur_info = deblur_by_cam.get(name)
             if deblur_info is not None:
                 info["deblur"] = deblur_info
+            if capture_meta is not None:
+                info["capture_metadata"] = capture_meta
             if stamp is not None:
                 s_ns = _stamp_to_ns(stamp)
+                adjusted_s_ns = int(s_ns + round(info["deblur_timestamp_offset_ms"] * 1_000_000.0))
+                info["deblur_adjusted_stamp"] = _ns_to_stamp_str(adjusted_s_ns)
                 info["offset_from_trigger_ms"] = (s_ns - trigger_ns) / 1_000_000.0
 
                 fix = self._nearest_fix(s_ns)
@@ -3502,7 +3713,39 @@ class CaptureService(Node):
                 return
             time.sleep(poll)
 
-    def _rpicam_cmd(self, cam_index: int, out_path: str, quality: int) -> List[str]:
+    def _read_rpicam_metadata(self, metadata_path: str) -> Dict[str, Any]:
+        info: Dict[str, Any] = {
+            "path": metadata_path,
+            "exists": bool(metadata_path and os.path.exists(metadata_path)),
+            "exposure_time_us": None,
+            "status": "missing",
+        }
+        if not info["exists"]:
+            return info
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            info["status"] = f"parse_failed: {e}"
+            return info
+
+        exposure_us = _extract_exposure_time_us(data)
+        info.update({
+            "status": "ok",
+            "exposure_time_us": int(exposure_us) if exposure_us is not None else None,
+            "metadata": data,
+        })
+        if exposure_us is not None:
+            info["exposure_ms"] = float(exposure_us) / 1000.0
+        return info
+
+    def _rpicam_cmd(
+        self,
+        cam_index: int,
+        out_path: str,
+        quality: int,
+        metadata_path: Optional[str] = None,
+    ) -> List[str]:
         width = int(self.get_parameter("width").value)
         height = int(self.get_parameter("height").value)
         warmup_ms = int(self.get_parameter("warmup_ms").value)
@@ -3522,6 +3765,8 @@ class CaptureService(Node):
             "-t", str(t_ms),
             "-o", out_path,
         ]
+        if metadata_path:
+            cmd.extend(["--metadata", metadata_path])
         if awb:
             cmd.extend(["--awb", awb])
         if awbgains:
@@ -3551,21 +3796,32 @@ class CaptureService(Node):
         except Exception as e:
             return False, str(e)
 
-    def _run_one(self, cam_index: int, out_path: str, quality: int, timeout_s: float) -> Tuple[bool, str, Optional[TimeMsg]]:
-        cmd = self._rpicam_cmd(cam_index, out_path, quality)
+    def _run_one(
+        self,
+        cam_index: int,
+        out_path: str,
+        quality: int,
+        timeout_s: float,
+        metadata_path: str,
+    ) -> Tuple[bool, str, Optional[TimeMsg], Dict[str, Any]]:
+        cmd = self._rpicam_cmd(cam_index, out_path, quality, metadata_path)
         end_stamp: Optional[TimeMsg] = None
+        meta: Dict[str, Any] = {"path": metadata_path, "exists": False, "status": "not_run", "exposure_time_us": None}
         try:
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=self._preview_env())
             end_stamp = now_ros_time(self)
         except subprocess.TimeoutExpired:
-            return False, f"TimeoutExpired running: {' '.join(cmd)}", now_ros_time(self)
+            meta = self._read_rpicam_metadata(metadata_path)
+            return False, f"TimeoutExpired running: {' '.join(cmd)}", now_ros_time(self), meta
         except Exception as e:
-            return False, f"Failed running {' '.join(cmd)}: {e}", now_ros_time(self)
+            meta = self._read_rpicam_metadata(metadata_path)
+            return False, f"Failed running {' '.join(cmd)}: {e}", now_ros_time(self), meta
 
         ok = (p.returncode == 0) and os.path.exists(out_path) and os.path.getsize(out_path) > 0
+        meta = self._read_rpicam_metadata(metadata_path)
         if ok:
-            return True, "", end_stamp
-        return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n", end_stamp
+            return True, "", end_stamp, meta
+        return False, f"rc={p.returncode}\nstdout:\n{p.stdout}\nstderr:\n{p.stderr}\n", end_stamp, meta
 
     def _perform_capture_still(
         self,
@@ -3587,6 +3843,8 @@ class CaptureService(Node):
         session = session or datetime.now().strftime("%Y%m%d_%H%M%S")
         cam0_path = os.path.join(out_dir, f"{session}_cam0.jpg")
         cam1_path = os.path.join(out_dir, f"{session}_cam1.jpg")
+        cam0_rpicam_meta_path = os.path.join(out_dir, f"{session}_cam0_rpicam_meta.json")
+        cam1_rpicam_meta_path = os.path.join(out_dir, f"{session}_cam1_rpicam_meta.json")
 
         trigger_stamp = now_ros_time(self)
         self.get_logger().info(f"Capture session={session} -> {cam0_path}, {cam1_path}")
@@ -3618,6 +3876,18 @@ class CaptureService(Node):
         # for metadata and IMU deblur alignment.
         cam0_stamp: Optional[TimeMsg] = None
         cam1_stamp: Optional[TimeMsg] = None
+        cam0_rpicam_meta: Dict[str, Any] = {
+            "path": cam0_rpicam_meta_path,
+            "exists": False,
+            "status": "not_run",
+            "exposure_time_us": None,
+        }
+        cam1_rpicam_meta: Dict[str, Any] = {
+            "path": cam1_rpicam_meta_path,
+            "exists": False,
+            "status": "not_run",
+            "exposure_time_us": None,
+        }
 
         cam_count = _libcamera_camera_count()
         self._detected_cam_count = cam_count
@@ -3627,12 +3897,30 @@ class CaptureService(Node):
             for attempt in range(retries + 1):
                 if feedback_cb is not None:
                     feedback_cb(f"capturing_attempt_{attempt+1}")
+                for stale_path in (cam0_path, cam1_path, cam0_rpicam_meta_path, cam1_rpicam_meta_path):
+                    try:
+                        if stale_path and os.path.exists(stale_path):
+                            os.remove(stale_path)
+                    except Exception:
+                        pass
                 if parallel:
                     # Run both still captures in parallel (faster pause window)
-                    p0 = subprocess.Popen(self._rpicam_cmd(cam0, cam0_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._preview_env())
+                    p0 = subprocess.Popen(
+                        self._rpicam_cmd(cam0, cam0_path, quality, cam0_rpicam_meta_path),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        env=self._preview_env(),
+                    )
                     p1 = None
                     if allow_cam1:
-                        p1 = subprocess.Popen(self._rpicam_cmd(cam1, cam1_path, quality), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self._preview_env())
+                        p1 = subprocess.Popen(
+                            self._rpicam_cmd(cam1, cam1_path, quality, cam1_rpicam_meta_path),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            env=self._preview_env(),
+                        )
                     try:
                         out0, err0 = p0.communicate(timeout=run_timeout_s)
                         cam0_stamp = now_ros_time(self)
@@ -3651,11 +3939,19 @@ class CaptureService(Node):
                             cam1_stamp = now_ros_time(self)
 
                     ok0 = (p0.returncode == 0) and os.path.exists(cam0_path) and os.path.getsize(cam0_path) > 0
+                    cam0_rpicam_meta = self._read_rpicam_metadata(cam0_rpicam_meta_path)
                     if allow_cam1 and p1 is not None:
                         ok1 = (p1.returncode == 0) and os.path.exists(cam1_path) and os.path.getsize(cam1_path) > 0
+                        cam1_rpicam_meta = self._read_rpicam_metadata(cam1_rpicam_meta_path)
                     else:
                         ok1 = True
                         cam1_stamp = None
+                        cam1_rpicam_meta = {
+                            "path": cam1_rpicam_meta_path,
+                            "exists": False,
+                            "status": "skipped",
+                            "exposure_time_us": None,
+                        }
                     if not ok0:
                         d0 = f"attempt={attempt+1}/{retries+1} cam=0 rc={p0.returncode}\nstdout:\n{out0}\nstderr:\n{err0}\n"
                         cam0_stamp = None
@@ -3663,12 +3959,30 @@ class CaptureService(Node):
                         d1 = f"attempt={attempt+1}/{retries+1} cam=1 rc={p1.returncode}\nstdout:\n{out1}\nstderr:\n{err1}\n"
                         cam1_stamp = None
                 else:
-                    ok0, d0, cam0_stamp = self._run_one(cam0, cam0_path, quality, run_timeout_s)
+                    ok0, d0, cam0_stamp, cam0_rpicam_meta = self._run_one(
+                        cam0,
+                        cam0_path,
+                        quality,
+                        run_timeout_s,
+                        cam0_rpicam_meta_path,
+                    )
                     if allow_cam1:
-                        ok1, d1, cam1_stamp = self._run_one(cam1, cam1_path, quality, run_timeout_s)
+                        ok1, d1, cam1_stamp, cam1_rpicam_meta = self._run_one(
+                            cam1,
+                            cam1_path,
+                            quality,
+                            run_timeout_s,
+                            cam1_rpicam_meta_path,
+                        )
                     else:
                         ok1 = True
                         cam1_stamp = None
+                        cam1_rpicam_meta = {
+                            "path": cam1_rpicam_meta_path,
+                            "exists": False,
+                            "status": "skipped",
+                            "exposure_time_us": None,
+                        }
 
                     if not ok0:
                         cam0_stamp = None
@@ -3732,6 +4046,8 @@ class CaptureService(Node):
             quality,
             gyro_samples,
             camera_name="cam0",
+            exposure_time_us=cam0_rpicam_meta.get("exposure_time_us"),
+            capture_metadata=cam0_rpicam_meta,
         )
         cam1_deblur = self._deblur_capture_image(
             cam1_path,
@@ -3739,6 +4055,8 @@ class CaptureService(Node):
             quality,
             gyro_samples,
             camera_name="cam1",
+            exposure_time_us=cam1_rpicam_meta.get("exposure_time_us"),
+            capture_metadata=cam1_rpicam_meta,
         )
         if cam0_deblur.get("path"):
             msg = f"{msg}; cam0_deblur={cam0_deblur.get('path')}"
@@ -3752,6 +4070,8 @@ class CaptureService(Node):
                 "trigger_stamp": _stamp_to_str(trigger_stamp),
                 "cam0_stamp": _stamp_to_str(cam0_stamp) if cam0_stamp is not None else None,
                 "cam1_stamp": _stamp_to_str(cam1_stamp) if cam1_stamp is not None else None,
+                "cam0_rpicam_metadata": cam0_rpicam_meta,
+                "cam1_rpicam_metadata": cam1_rpicam_meta,
                 "cam0_deblur": cam0_deblur,
                 "cam1_deblur": cam1_deblur,
             }
@@ -3768,6 +4088,8 @@ class CaptureService(Node):
                 cam1_stamp=cam1_stamp,
                 cam0_deblur=cam0_deblur,
                 cam1_deblur=cam1_deblur,
+                cam0_capture_metadata=cam0_rpicam_meta,
+                cam1_capture_metadata=cam1_rpicam_meta,
             )
             if bool(self.get_parameter("write_trajectory_csv").value):
                 try:

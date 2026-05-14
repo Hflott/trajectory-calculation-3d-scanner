@@ -265,13 +265,14 @@ For simple color tuning, edit `capture_awb`, `capture_saturation`, and
 For each capture session it writes:
 - `*_cam0.jpg` / `*_cam1.jpg`
 - `*_cam0_deblur.jpg` / `*_cam1_deblur.jpg` (IMU motion-aware deblur output)
+- `*_cam0_rpicam_meta.json` / `*_cam1_rpicam_meta.json` with the camera-reported still metadata, including `ExposureTime` when available
 - `*_meta.json` with trigger timestamp, per-image timestamps, and nearest GNSS/IMU/TimeReference + odometry (`/odometry/local`, `/odometry/global`) samples
 - `*_trajectory.csv` (interpolated trajectory samples, default 100 Hz around trigger)
 
 Capture metadata now also includes:
 - interpolated odometry at each camera timestamp (`interp_odom_local`, `interp_odom_global`)
 - a trajectory bundle sampled at `trajectory_sample_rate_hz` (default `100.0`)
-- per-camera deblur diagnostics with exposure-window gyro integration (`exposure_start/end`, `gyro_samples_used`, `delta_theta_rad`, blur vector, PSF settings, output path)
+- per-camera deblur diagnostics with exposure-window gyro integration (`exposure_start/end`, `gyro_samples_used`, `gyro_bias`, `delta_theta_raw_rad`, `delta_theta_rad`, blur vector, PSF settings, output path)
 - rig extrinsics used by deblur (`rig_extrinsics`), including IMU/camera/GNSS positions and the IMU-to-camera rotation matrices
 
 Capture timing diagnostics are also published on `/capture/debug` and shown in the UI under `Last Capture -> Details / Log`.
@@ -302,6 +303,39 @@ The current default uses the extrinsic rotations for rotational deblur. Camera
 position offsets are recorded in metadata and are only used in the deblur
 projection when `deblur_use_translation:=true`, because translation correction
 depends on scene depth.
+
+### Deblur timing and gyro bias tuning
+Deblur uses the image timestamp plus optional offsets before choosing the IMU
+exposure interval:
+```bash
+deblur_timestamp_offset_ms:=0.0
+deblur_cam0_timestamp_offset_ms:=0.0
+deblur_cam1_timestamp_offset_ms:=0.0
+```
+
+Use the common offset first. If one camera consistently needs a different
+timing correction, use the per-camera offset. The adjusted stamp and offset are
+written to every capture metadata file.
+
+Gyro bias correction is enabled by default. While the rover is stationary,
+`capture_service` estimates a rolling gyro bias and subtracts it during exposure
+integration:
+```bash
+deblur_gyro_bias_enable:=true
+deblur_gyro_bias_window_s:=2.0
+deblur_gyro_bias_min_samples:=25
+deblur_gyro_bias_stationary_max_rate_rad_s:=0.025
+deblur_gyro_bias_stationary_max_std_rad_s:=0.010
+deblur_gyro_bias_max_age_s:=30.0
+```
+
+The bias estimator state and the applied bias are saved under `gyro_bias` in the
+per-camera deblur diagnostics.
+
+In still-capture mode, `capture_service` now passes `--metadata` to
+`rpicam-still` and uses the per-image `ExposureTime` from that metadata for the
+deblur exposure window. If the camera metadata is missing or does not contain
+exposure, it falls back to `deblur_exposure_time_us` or `deblur_exposure_ms`.
 
 If you need timestamped stream captures instead of high-resolution still
 captures, override:

@@ -169,7 +169,9 @@ def capture(args: argparse.Namespace) -> Dict[str, Any]:
         if sensor_timestamp_ns_int is not None:
             sensor_timestamp_system_ns = int(sensor_timestamp_ns_int + clock_offset_ns)
             if exposure_us_int is not None:
-                exposure_midpoint_system_ns = int(sensor_timestamp_system_ns + (exposure_us_int * 1000) // 2)
+                # SensorTimestamp/FrameWallClock represent the frame produced/readout
+                # time, so move back half an exposure for the midpoint estimate.
+                exposure_midpoint_system_ns = int(sensor_timestamp_system_ns - (exposure_us_int * 1000) // 2)
 
         payload.update(
             {
@@ -186,6 +188,11 @@ def capture(args: argparse.Namespace) -> Dict[str, Any]:
                 "exposure_time_us": exposure_us_int,
                 "exposure_ms": (float(exposure_us_int) / 1000.0) if exposure_us_int is not None else None,
                 "exposure_midpoint_system_ns": exposure_midpoint_system_ns,
+                "exposure_midpoint_source": (
+                    "sensor_timestamp_minus_half_exposure"
+                    if exposure_midpoint_system_ns is not None
+                    else None
+                ),
                 "timestamp_source": (
                     "picamera2_sensor_timestamp"
                     if exposure_midpoint_system_ns is not None

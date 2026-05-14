@@ -377,6 +377,21 @@ def _extract_exposure_midpoint_system_ns(metadata: Any) -> Optional[int]:
     return int(round(value))
 
 
+def _extract_frame_wall_clock_ns(metadata: Any) -> Optional[int]:
+    value = _find_numeric_key(
+        metadata,
+        (
+            "framewallclock",
+            "framewallclockns",
+            "frame_wall_clock",
+            "frame_wall_clock_ns",
+        ),
+    )
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
+    return int(round(value))
+
+
 def _vec3_to_list(v: Any) -> List[float]:
     arr = np.asarray(v, dtype=np.float64).reshape(3)
     return [float(arr[0]), float(arr[1]), float(arr[2])]
@@ -3753,14 +3768,30 @@ class CaptureService(Node):
 
         exposure_us = _extract_exposure_time_us(data)
         midpoint_ns = _extract_exposure_midpoint_system_ns(data)
+        frame_wall_clock_ns = _extract_frame_wall_clock_ns(data)
+        midpoint_source = "metadata_exposure_midpoint_system_ns" if midpoint_ns is not None else None
+        if midpoint_ns is None and frame_wall_clock_ns is not None:
+            if exposure_us is not None:
+                # FrameWallClock is SensorTimestamp in wall-clock units. That
+                # timestamp is the frame produced/readout time, so estimate the
+                # exposure midpoint by moving back half the exposure duration.
+                midpoint_ns = int(frame_wall_clock_ns - (int(exposure_us) * 1000) // 2)
+                midpoint_source = "frame_wall_clock_minus_half_exposure"
+            else:
+                midpoint_ns = int(frame_wall_clock_ns)
+                midpoint_source = "frame_wall_clock"
         info.update({
             "status": "ok",
             "exposure_time_us": int(exposure_us) if exposure_us is not None else None,
+            "frame_wall_clock_ns": int(frame_wall_clock_ns) if frame_wall_clock_ns is not None else None,
             "exposure_midpoint_system_ns": int(midpoint_ns) if midpoint_ns is not None else None,
+            "exposure_midpoint_source": midpoint_source,
             "metadata": data,
         })
         if exposure_us is not None:
             info["exposure_ms"] = float(exposure_us) / 1000.0
+        if frame_wall_clock_ns is not None:
+            info["frame_wall_clock_stamp"] = _ns_to_stamp_str(frame_wall_clock_ns)
         if midpoint_ns is not None:
             info["exposure_midpoint_stamp"] = _ns_to_stamp_str(midpoint_ns)
         return info

@@ -111,11 +111,24 @@ ros2 launch subsea_bringup rover_app.launch.py start_gpsd_client:=false
 ```
 
 ### One-command field startup (touchscreen friendly)
-Start app + GNSS publisher + localization with one command:
+Start the normal rover field setup with one command:
 ```bash
 ./scripts/run_rover_field.sh
 ```
-This also enables the BNO085 IMU node (`start_imu_node:=true`) when available.
+
+The normal startup parameters live near the top of `scripts/run_rover_field.sh`
+in the `FIELD_LAUNCH_ARGS` block. Edit that block directly for the defaults you
+want to use in the field, for example IMU rate, I2C bus, preview size,
+localization, GPS bridge, camera orientation, and deblur settings.
+
+One-off overrides still work, but they are optional:
+```bash
+./scripts/run_rover_field.sh imu_rate_hz:=200.0
+./scripts/run_rover_field.sh capture_mode:=still
+```
+
+The default field script enables GNSS, `/time_reference`, the BNO085 IMU, stream
+capture, localization, and motion deblur.
 
 One-time BNO085 Python dependencies on Raspberry Pi:
 ```bash
@@ -139,8 +152,8 @@ After reboot:
 ```bash
 ls /dev/i2c-3
 sudo i2cdetect -y -r 3     # expect 0x4a or 0x4b
-./scripts/run_rover_field.sh imu_i2c_bus:=3
 ```
+Then set `imu_i2c_bus:=3` in `scripts/run_rover_field.sh`.
 
 Quick field diagnostics (gpsd/PPS/chrony + ROS topic checks):
 ```bash
@@ -157,22 +170,9 @@ Organize imported `sessions/` + `diagnostics/` folders in this repo into date-ba
 ./scripts/organize_field_data.sh
 ```
 
-Useful options:
-```bash
-./scripts/run_rover_field.sh --still
-./scripts/run_rover_field.sh --no-localization
-./scripts/run_rover_field.sh --skip-service-restart
-./scripts/run_rover_field.sh --use-gpsd-json-bridge
-./scripts/run_rover_field.sh --swap-preview-feeds
-./scripts/run_rover_field.sh --imu-i2c-bus 3
-```
-
-`--swap-preview-feeds` swaps UI placement only (left/right preview panes), while capture topics and metadata remain `cam0`/`cam1`.
-
-If your cameras appear upside down after a sensor swap, set per-camera orientation (degrees):
-```bash
-./scripts/run_rover_field.sh cam0_orientation:=180 cam1_orientation:=180
-```
+If your cameras appear upside down after a sensor swap, set
+`cam0_orientation:=180` and/or `cam1_orientation:=180` in
+`scripts/run_rover_field.sh`.
 
 Create Raspberry Pi desktop shortcut + icon:
 ```bash

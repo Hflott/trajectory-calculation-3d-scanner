@@ -82,7 +82,9 @@ FIELD_LAUNCH_ARGS=(
   "deblur_timestamp_offset_ms:=0.0"
   "deblur_cam0_timestamp_offset_ms:=0.0"
   "deblur_cam1_timestamp_offset_ms:=0.0"
-  "deblur_require_time_reference:=true"
+  # Deblur only needs camera + IMU stamps on the same host clock. GNSS/PPS is
+  # useful for absolute time, but field deblur should not be disabled by a GNSS outage.
+  "deblur_require_time_reference:=false"
   "deblur_max_time_reference_age_ms:=2000.0"
   "deblur_fov_deg:=72.0"
   "deblur_strength:=1.0"
@@ -140,6 +142,10 @@ Optional one-off overrides are still accepted:
   ./scripts/run_rover_field.sh imu_rate_hz:=200.0
   ./scripts/run_rover_field.sh capture_mode:=stream
   ./scripts/run_rover_field.sh --skip-gnss-preflight
+
+Capture mode tradeoff:
+  --still   high-res still capture; pauses/restarts previews while capturing
+  --stream  no preview pause; captures the current preview stream resolution
 
 To remove the sudo password prompt from normal launch, run once:
   ./scripts/setup_rover_passwordless_launch.sh
@@ -276,12 +282,73 @@ run_ros_prelaunch_cleanup() {
   sleep 0.8
 }
 
-run_gnss_preflight_as_root() {
-  local tty_rule='KERNEL=="ttyAMA0", GROUP="dialout", MODE="0660"'
-  local tty_rule_file='/etc/udev/rules.d/99-ttyama0.rules'
-  local need_reload_rules="false"
+detect_gnss_device() {
+  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
+    ls -1 /dev/serial/by-id/* | head -n1
+    return 0
+  fi
 
-  systemctl disable --now serial-getty@ttyAMA0.service >/dev/null 2>&1 || true
+  local candidates=(
+    /dev/serial0
+    /dev/ttyAMA0
+    /dev/ttyAMA10
+    /dev/ttyAMA1
+    /dev/ttyS0
+    /dev/ttyACM0
+    /dev/ttyACM1
+    /dev/ttyUSB0
+    /dev/ttyUSB1
+  )
+  local d
+  for d in "${candidates[@]}"; do
+    if [[ -e "${d}" ]]; then
+      echo "${d}"
+      return 0
+    fi
+  done
+
+  if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
+    ls -1 /dev/ttyAMA* | sort -V | head -n1
+    return 0
+  fi
+
+  return 1
+}
+
+gpsd_config_matches_detected_device() {
+  local gnss_dev=""
+  local devices=""
+  local d
+  if ! gnss_dev="$(detect_gnss_device)"; then
+    return 1
+  fi
+  devices="$(sed -n 's/^DEVICES="//;s/"$//p' /etc/default/gpsd 2>/dev/null || true)"
+  for d in ${devices}; do
+    if [[ "${d}" == "${gnss_dev}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+run_gnss_preflight_as_root() {
+  local tty_rule='KERNEL=="ttyAMA[0-9]*", GROUP="dialout", MODE="0660"'
+  local tty_rule_file='/etc/udev/rules.d/99-ttyama.rules'
+  local need_reload_rules="false"
+  local gnss_dev=""
+  local gnss_real=""
+  local gnss_base=""
+
+  if gnss_dev="$(detect_gnss_device)"; then
+    gnss_real="$(readlink -f "${gnss_dev}" 2>/dev/null || echo "${gnss_dev}")"
+    gnss_base="$(basename "${gnss_real}")"
+    systemctl disable --now "serial-getty@${gnss_base}.service" >/dev/null 2>&1 || true
+  else
+    gnss_dev="/dev/ttyAMA10"
+    gnss_base="ttyAMA10"
+    systemctl disable --now serial-getty@ttyAMA0.service >/dev/null 2>&1 || true
+    systemctl disable --now serial-getty@ttyAMA10.service >/dev/null 2>&1 || true
+  fi
 
   if id gpsd >/dev/null 2>&1; then
     usermod -aG tty,dialout gpsd || true
@@ -300,17 +367,28 @@ run_gnss_preflight_as_root() {
 
   if [[ "${need_reload_rules}" == "true" ]]; then
     udevadm control --reload-rules >/dev/null 2>&1 || true
-    udevadm trigger /dev/ttyAMA0 >/dev/null 2>&1 || true
+    udevadm trigger /dev/ttyAMA* >/dev/null 2>&1 || true
   fi
 
+  cat >/etc/default/gpsd <<EOF
+START_DAEMON="true"
+USBAUTO="true"
+DEVICES="${gnss_dev} /dev/pps0"
+GPSD_OPTIONS="-n"
+EOF
+
+  systemctl enable gpsd.socket chrony >/dev/null 2>&1 || true
   systemctl restart gpsd.socket gpsd.service chrony >/dev/null 2>&1 || true
 }
 
 run_gnss_preflight() {
   if [[ -x "${GNSS_PREFLIGHT_HELPER}" ]]; then
     if sudo -n "${GNSS_PREFLIGHT_HELPER}" >/dev/null 2>&1; then
-      echo "Applied GNSS UART preflight with passwordless helper."
-      return 0
+      if gpsd_config_matches_detected_device; then
+        echo "Applied GNSS UART preflight with passwordless helper."
+        return 0
+      fi
+      echo "Existing GNSS helper did not update gpsd to the detected UART; applying refreshed preflight..."
     fi
   fi
 
@@ -320,21 +398,21 @@ run_gnss_preflight() {
     echo "Requesting sudo for GNSS UART preflight + gpsd/chrony restart..."
     echo "Tip: run ./scripts/setup_rover_passwordless_launch.sh once to remove this prompt."
   fi
-  sudo bash -lc "$(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+  sudo bash -lc "$(declare -f detect_gnss_device); $(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
 }
 
 restart_gpsd_chrony() {
   local systemctl_bin
   systemctl_bin="$(command -v systemctl || echo /usr/bin/systemctl)"
 
-  if sudo -n "${systemctl_bin}" restart gpsd.socket chrony >/dev/null 2>&1; then
+  if sudo -n "${systemctl_bin}" restart gpsd.socket gpsd.service chrony >/dev/null 2>&1; then
     echo "Restarted gpsd/chrony with passwordless sudo."
     return 0
   fi
 
   echo "Requesting sudo to restart gpsd/chrony..."
   echo "Tip: run ./scripts/setup_rover_passwordless_launch.sh once to remove this prompt."
-  sudo "${systemctl_bin}" restart gpsd.socket chrony || true
+  sudo "${systemctl_bin}" restart gpsd.socket gpsd.service chrony || true
 }
 
 if command -v systemctl >/dev/null 2>&1; then

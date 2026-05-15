@@ -208,7 +208,9 @@ detect_gnss_device() {
   fi
 
   local candidates=(
+    /dev/serial0
     /dev/ttyAMA0
+    /dev/ttyAMA10
     /dev/ttyAMA1
     /dev/ttyS0
     /dev/ttyACM0
@@ -223,6 +225,12 @@ detect_gnss_device() {
       return 0
     fi
   done
+
+  if ls /dev/ttyAMA* >/dev/null 2>&1; then
+    ls -1 /dev/ttyAMA* | sort -V | head -n1
+    return 0
+  fi
+
   return 1
 }
 

@@ -9,6 +9,7 @@ OUT_BASE="${1:-${HOME}/field_logs}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="${OUT_BASE}/rover_diag_${STAMP}"
 STEP_TIMEOUT_S="${STEP_TIMEOUT_S:-20}"
+ARCHIVE_TIMEOUT_S="${ARCHIVE_TIMEOUT_S:-60}"
 
 mkdir -p "${OUT_DIR}"
 
@@ -28,6 +29,39 @@ source_safe() {
 
 timestamp_utc() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+detect_gnss_device() {
+  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
+    ls -1 /dev/serial/by-id/* | head -n1
+    return 0
+  fi
+
+  local candidates=(
+    /dev/serial0
+    /dev/ttyAMA0
+    /dev/ttyAMA10
+    /dev/ttyAMA1
+    /dev/ttyS0
+    /dev/ttyACM0
+    /dev/ttyACM1
+    /dev/ttyUSB0
+    /dev/ttyUSB1
+  )
+  local d
+  for d in "${candidates[@]}"; do
+    if [[ -e "${d}" ]]; then
+      echo "${d}"
+      return 0
+    fi
+  done
+
+  if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
+    ls -1 /dev/ttyAMA* | sort -V | head -n1
+    return 0
+  fi
+
+  return 1
 }
 
 run_sh() {
@@ -62,8 +96,16 @@ note() {
 note "Rover diagnostics started: $(timestamp_utc)"
 note "Output dir: ${OUT_DIR}"
 
+GNSS_DEV="$(detect_gnss_device || true)"
+if [[ -n "${GNSS_DEV}" ]]; then
+  note "Detected GNSS serial device: ${GNSS_DEV}"
+else
+  note "Detected GNSS serial device: (none)"
+fi
+
 run_sh "sys_info" "uname -a; echo; uptime; echo; whoami; echo; id"
 run_sh "devices" "ls -l /dev/pps* /dev/ttyAMA* 2>/dev/null; echo; ls -l /dev/serial/by-id/ 2>/dev/null || true"
+run_sh "gnss_detected_device" "echo '${GNSS_DEV:-}'; if [[ -n '${GNSS_DEV:-}' ]]; then readlink -f '${GNSS_DEV}' 2>/dev/null || true; fi"
 run_sh "pps_sysfs" 'for p in /sys/class/pps/pps*; do echo "== $(basename "$p") =="; cat "$p/name"; done'
 run_sh "boot_pps_overlay" "grep -n 'dtoverlay=pps-gpio' /boot/firmware/config.txt 2>/dev/null || true"
 run_sh "gpsd_default_cfg" "grep -E 'START_DAEMON|USBAUTO|DEVICES|GPSD_OPTIONS' /etc/default/gpsd 2>/dev/null || true"
@@ -71,7 +113,7 @@ run_sh "gpsd_status" "systemctl --no-pager --full status gpsd.socket gpsd.servic
 run_sh "chrony_status" "systemctl --no-pager --full status chrony.service 2>/dev/null || true"
 
 run_sh "gpspipe_json" "timeout 10s gpspipe -w -n 30"
-run_sh "uart_nmea" "timeout 8s cat /dev/ttyAMA0 | grep -E 'RMC|GGA|ZDA'"
+run_sh "uart_nmea" "if [[ -n '${GNSS_DEV:-}' ]]; then timeout 8s cat '${GNSS_DEV}' | grep -aE 'RMC|GGA|ZDA'; else echo 'No GNSS serial device detected'; fi"
 run_sh "chrony_sources" "chronyc sources -v"
 run_sh "chrony_tracking" "chronyc tracking"
 
@@ -169,11 +211,13 @@ PY
 fi
 
 if [[ -d "${HOME}/.ros/log/latest" ]]; then
-  tar -czf "${OUT_DIR}/ros_latest_logs.tgz" -C "${HOME}/.ros/log/latest" . >/dev/null 2>&1 || true
+  timeout "${ARCHIVE_TIMEOUT_S}s" tar -czf "${OUT_DIR}/ros_latest_logs.tgz" -C "${HOME}/.ros/log/latest" . >/dev/null 2>&1 || true
 fi
 
 TAR_PATH="${OUT_DIR}.tar.gz"
-tar -czf "${TAR_PATH}" -C "$(dirname "${OUT_DIR}")" "$(basename "${OUT_DIR}")"
+if ! timeout "${ARCHIVE_TIMEOUT_S}s" tar -czf "${TAR_PATH}" -C "$(dirname "${OUT_DIR}")" "$(basename "${OUT_DIR}")"; then
+  note "Archive step timed out or failed after ${ARCHIVE_TIMEOUT_S}s."
+fi
 
 note "Diagnostics finished: $(timestamp_utc)"
 note "Archive: ${TAR_PATH}"

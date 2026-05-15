@@ -32,11 +32,59 @@ fi
 source_safe "${ROS_SETUP}"
 source_safe "${WS_SETUP}"
 
+detect_gnss_device() {
+  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
+    ls -1 /dev/serial/by-id/* | head -n1
+    return 0
+  fi
+
+  local candidates=(
+    /dev/serial0
+    /dev/ttyAMA0
+    /dev/ttyAMA10
+    /dev/ttyAMA1
+    /dev/ttyS0
+    /dev/ttyACM0
+    /dev/ttyACM1
+    /dev/ttyUSB0
+    /dev/ttyUSB1
+  )
+  local d
+  for d in "${candidates[@]}"; do
+    if [[ -e "${d}" ]]; then
+      echo "${d}"
+      return 0
+    fi
+  done
+
+  if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
+    ls -1 /dev/ttyAMA* | sort -V | head -n1
+    return 0
+  fi
+
+  return 1
+}
+
+GNSS_DEV="$(detect_gnss_device || true)"
+
+echo "== GNSS device/config =="
+echo "Detected serial: ${GNSS_DEV:-none}"
+grep -E 'START_DAEMON|USBAUTO|DEVICES|GPSD_OPTIONS' /etc/default/gpsd 2>/dev/null || true
+
+echo
 echo "== gpsd stream (6s) =="
 if command -v gpspipe >/dev/null 2>&1; then
   timeout 6s gpspipe -w -n 12 || true
 else
   echo "gpspipe not found"
+fi
+
+echo
+echo "== GNSS UART NMEA sample (6s) =="
+if [[ -n "${GNSS_DEV}" ]]; then
+  timeout 6s cat "${GNSS_DEV}" | grep -aE 'RMC|GGA|ZDA' || true
+else
+  echo "No GNSS serial device detected"
 fi
 
 echo

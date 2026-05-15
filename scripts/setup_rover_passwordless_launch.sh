@@ -38,21 +38,19 @@ cat >"${tmp_helper}" <<'EOF'
 set -Eeuo pipefail
 
 detect_gnss_device() {
-  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
-    ls -1 /dev/serial/by-id/* | head -n1
-    return 0
+  if [[ -n "${GNSS_DEVICE:-}" ]]; then
+    if [[ -e "${GNSS_DEVICE}" ]]; then
+      echo "${GNSS_DEVICE}"
+      return 0
+    fi
+    echo "WARNING: GNSS_DEVICE=${GNSS_DEVICE} does not exist; falling back to auto-detect." >&2
   fi
 
   local candidates=(
-    /dev/serial0
     /dev/ttyAMA0
-    /dev/ttyAMA10
+    /dev/serial0
     /dev/ttyAMA1
     /dev/ttyS0
-    /dev/ttyACM0
-    /dev/ttyACM1
-    /dev/ttyUSB0
-    /dev/ttyUSB1
   )
   local d
   for d in "${candidates[@]}"; do
@@ -63,8 +61,12 @@ detect_gnss_device() {
   done
 
   if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
-    ls -1 /dev/ttyAMA* | sort -V | head -n1
-    return 0
+    local ttyama_dev
+    ttyama_dev="$(ls -1 /dev/ttyAMA* | grep -vx '/dev/ttyAMA10' | sort -V | head -n1 || true)"
+    if [[ -n "${ttyama_dev}" ]]; then
+      echo "${ttyama_dev}"
+      return 0
+    fi
   fi
 
   return 1
@@ -82,7 +84,7 @@ if gnss_dev="$(detect_gnss_device)"; then
   gnss_base="$(basename "${gnss_real}")"
   systemctl disable --now "serial-getty@${gnss_base}.service" >/dev/null 2>&1 || true
 else
-  gnss_dev="/dev/ttyAMA10"
+  gnss_dev="/dev/ttyAMA0"
   systemctl disable --now serial-getty@ttyAMA0.service >/dev/null 2>&1 || true
   systemctl disable --now serial-getty@ttyAMA10.service >/dev/null 2>&1 || true
 fi
@@ -111,7 +113,7 @@ cat >/etc/default/gpsd <<GPSD_EOF
 START_DAEMON="true"
 USBAUTO="false"
 DEVICES="${gnss_dev} /dev/pps0"
-GPSD_OPTIONS="-n -b -s 115200"
+GPSD_OPTIONS="-n -b -s 460800"
 GPSD_EOF
 
 systemctl enable gpsd.socket chrony >/dev/null 2>&1 || true

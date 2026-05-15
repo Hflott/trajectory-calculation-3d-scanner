@@ -22,7 +22,7 @@ GNSS_PREFLIGHT_HELPER="/usr/local/sbin/subsea-rover-gnss-preflight"
 RUN_ROS_CLEANUP="true"
 RUN_GNSS_PREFLIGHT="true"
 RESTART_GPSD_CHRONY="true"
-GNSS_BAUD="${GNSS_BAUD:-115200}"
+GNSS_BAUD="${GNSS_BAUD:-460800}"
 
 FIELD_LAUNCH_ARGS=(
   "start_gpsd_client:=true"
@@ -284,21 +284,19 @@ run_ros_prelaunch_cleanup() {
 }
 
 detect_gnss_device() {
-  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
-    ls -1 /dev/serial/by-id/* | head -n1
-    return 0
+  if [[ -n "${GNSS_DEVICE:-}" ]]; then
+    if [[ -e "${GNSS_DEVICE}" ]]; then
+      echo "${GNSS_DEVICE}"
+      return 0
+    fi
+    echo "WARNING: GNSS_DEVICE=${GNSS_DEVICE} does not exist; falling back to auto-detect." >&2
   fi
 
   local candidates=(
-    /dev/serial0
     /dev/ttyAMA0
-    /dev/ttyAMA10
+    /dev/serial0
     /dev/ttyAMA1
     /dev/ttyS0
-    /dev/ttyACM0
-    /dev/ttyACM1
-    /dev/ttyUSB0
-    /dev/ttyUSB1
   )
   local d
   for d in "${candidates[@]}"; do
@@ -309,8 +307,12 @@ detect_gnss_device() {
   done
 
   if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
-    ls -1 /dev/ttyAMA* | sort -V | head -n1
-    return 0
+    local ttyama_dev
+    ttyama_dev="$(ls -1 /dev/ttyAMA* | grep -vx '/dev/ttyAMA10' | sort -V | head -n1 || true)"
+    if [[ -n "${ttyama_dev}" ]]; then
+      echo "${ttyama_dev}"
+      return 0
+    fi
   fi
 
   return 1
@@ -352,8 +354,8 @@ run_gnss_preflight_as_root() {
     gnss_base="$(basename "${gnss_real}")"
     systemctl disable --now "serial-getty@${gnss_base}.service" >/dev/null 2>&1 || true
   else
-    gnss_dev="/dev/ttyAMA10"
-    gnss_base="ttyAMA10"
+    gnss_dev="/dev/ttyAMA0"
+    gnss_base="ttyAMA0"
     systemctl disable --now serial-getty@ttyAMA0.service >/dev/null 2>&1 || true
     systemctl disable --now serial-getty@ttyAMA10.service >/dev/null 2>&1 || true
   fi
@@ -390,7 +392,7 @@ EOF
 }
 
 run_gnss_preflight() {
-  if [[ -x "${GNSS_PREFLIGHT_HELPER}" ]]; then
+  if [[ -z "${GNSS_DEVICE:-}" && -x "${GNSS_PREFLIGHT_HELPER}" ]]; then
     if sudo -n "${GNSS_PREFLIGHT_HELPER}" >/dev/null 2>&1; then
       if gpsd_config_is_current; then
         echo "Applied GNSS UART preflight with passwordless helper."
@@ -406,7 +408,11 @@ run_gnss_preflight() {
     echo "Requesting sudo for GNSS UART preflight + gpsd/chrony restart..."
     echo "Tip: run ./scripts/setup_rover_passwordless_launch.sh once to remove this prompt."
   fi
-  sudo bash -lc "$(declare -f detect_gnss_device); $(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
+  local gnss_device_q
+  local gnss_baud_q
+  printf -v gnss_device_q "%q" "${GNSS_DEVICE:-}"
+  printf -v gnss_baud_q "%q" "${GNSS_BAUD}"
+  sudo bash -lc "GNSS_DEVICE=${gnss_device_q}; GNSS_BAUD=${gnss_baud_q}; $(declare -f detect_gnss_device); $(declare -f run_gnss_preflight_as_root); run_gnss_preflight_as_root"
 }
 
 restart_gpsd_chrony() {

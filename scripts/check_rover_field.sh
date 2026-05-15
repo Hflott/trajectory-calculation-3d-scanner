@@ -33,21 +33,19 @@ source_safe "${ROS_SETUP}"
 source_safe "${WS_SETUP}"
 
 detect_gnss_device() {
-  if compgen -G "/dev/serial/by-id/*" >/dev/null 2>&1; then
-    ls -1 /dev/serial/by-id/* | head -n1
-    return 0
+  if [[ -n "${GNSS_DEVICE:-}" ]]; then
+    if [[ -e "${GNSS_DEVICE}" ]]; then
+      echo "${GNSS_DEVICE}"
+      return 0
+    fi
+    echo "WARNING: GNSS_DEVICE=${GNSS_DEVICE} does not exist; falling back to auto-detect." >&2
   fi
 
   local candidates=(
-    /dev/serial0
     /dev/ttyAMA0
-    /dev/ttyAMA10
+    /dev/serial0
     /dev/ttyAMA1
     /dev/ttyS0
-    /dev/ttyACM0
-    /dev/ttyACM1
-    /dev/ttyUSB0
-    /dev/ttyUSB1
   )
   local d
   for d in "${candidates[@]}"; do
@@ -58,8 +56,12 @@ detect_gnss_device() {
   done
 
   if compgen -G "/dev/ttyAMA*" >/dev/null 2>&1; then
-    ls -1 /dev/ttyAMA* | sort -V | head -n1
-    return 0
+    local ttyama_dev
+    ttyama_dev="$(ls -1 /dev/ttyAMA* | grep -vx '/dev/ttyAMA10' | sort -V | head -n1 || true)"
+    if [[ -n "${ttyama_dev}" ]]; then
+      echo "${ttyama_dev}"
+      return 0
+    fi
   fi
 
   return 1

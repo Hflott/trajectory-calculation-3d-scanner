@@ -33,13 +33,18 @@ FIELD_LAUNCH_ARGS=(
   # IMU
   "imu_topic:=/imu/data"
   "imu_frame_id:=imu_link"
-  "imu_rate_hz:=100.0"
+  # Full BNO085 reports over software I2C are more stable at 50 Hz.
+  "imu_rate_hz:=50.0"
   "imu_i2c_address:=74"
   "imu_i2c_bus:=3"
   "imu_timestamp_mode:=read_end"
   "imu_enable_rotation:=true"
   "imu_enable_accel:=true"
   "imu_enable_gyro:=true"
+  "imu_use_driver_cached_reads:=false"
+  "imu_init_retry_count:=8"
+  "imu_init_retry_delay_s:=0.6"
+  "imu_feature_enable_delay_s:=0.12"
 
   # Camera/UI preview
   "manage_previews:=true"

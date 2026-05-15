@@ -35,6 +35,11 @@ def generate_launch_description():
     imu_enable_rotation = LaunchConfiguration('imu_enable_rotation')
     imu_enable_accel = LaunchConfiguration('imu_enable_accel')
     imu_enable_gyro = LaunchConfiguration('imu_enable_gyro')
+    imu_use_driver_cached_reads = LaunchConfiguration('imu_use_driver_cached_reads')
+    imu_read_error_reset_threshold = LaunchConfiguration('imu_read_error_reset_threshold')
+    imu_init_retry_count = LaunchConfiguration('imu_init_retry_count')
+    imu_init_retry_delay_s = LaunchConfiguration('imu_init_retry_delay_s')
+    imu_feature_enable_delay_s = LaunchConfiguration('imu_feature_enable_delay_s')
     start_cameras = LaunchConfiguration('start_cameras')
     manage_previews = LaunchConfiguration('manage_previews')
     respawn_cameras = LaunchConfiguration('respawn_cameras')
@@ -131,6 +136,11 @@ def generate_launch_description():
     imu_enable_rotation_bool = ParameterValue(imu_enable_rotation, value_type=bool)
     imu_enable_accel_bool = ParameterValue(imu_enable_accel, value_type=bool)
     imu_enable_gyro_bool = ParameterValue(imu_enable_gyro, value_type=bool)
+    imu_use_driver_cached_reads_bool = ParameterValue(imu_use_driver_cached_reads, value_type=bool)
+    imu_read_error_reset_threshold_int = ParameterValue(imu_read_error_reset_threshold, value_type=int)
+    imu_init_retry_count_int = ParameterValue(imu_init_retry_count, value_type=int)
+    imu_init_retry_delay_s_float = ParameterValue(imu_init_retry_delay_s, value_type=float)
+    imu_feature_enable_delay_s_float = ParameterValue(imu_feature_enable_delay_s, value_type=float)
     preview_w_int = ParameterValue(preview_width, value_type=int)
     preview_h_int = ParameterValue(preview_height, value_type=int)
     preview_fps_int = ParameterValue(preview_fps, value_type=int)
@@ -348,6 +358,11 @@ def generate_launch_description():
             'enable_rotation': imu_enable_rotation_bool,
             'enable_accel': imu_enable_accel_bool,
             'enable_gyro': imu_enable_gyro_bool,
+            'use_driver_cached_reads': imu_use_driver_cached_reads_bool,
+            'read_error_reset_threshold': imu_read_error_reset_threshold_int,
+            'init_retry_count': imu_init_retry_count_int,
+            'init_retry_delay_s': imu_init_retry_delay_s_float,
+            'feature_enable_delay_s': imu_feature_enable_delay_s_float,
         }],
         condition=IfCondition(start_imu_node),
     )
@@ -530,6 +545,11 @@ def generate_launch_description():
         DeclareLaunchArgument('imu_enable_rotation', default_value='true'),
         DeclareLaunchArgument('imu_enable_accel', default_value='true'),
         DeclareLaunchArgument('imu_enable_gyro', default_value='true'),
+        DeclareLaunchArgument('imu_use_driver_cached_reads', default_value='true'),
+        DeclareLaunchArgument('imu_read_error_reset_threshold', default_value='10'),
+        DeclareLaunchArgument('imu_init_retry_count', default_value='6'),
+        DeclareLaunchArgument('imu_init_retry_delay_s', default_value='0.45'),
+        DeclareLaunchArgument('imu_feature_enable_delay_s', default_value='0.06'),
         DeclareLaunchArgument('start_cameras', default_value='true'),
         DeclareLaunchArgument('respawn_cameras', default_value='false'),
         DeclareLaunchArgument('manage_previews', default_value='true'),

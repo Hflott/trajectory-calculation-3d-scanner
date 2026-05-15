@@ -109,9 +109,9 @@ fi
 
 cat >/etc/default/gpsd <<GPSD_EOF
 START_DAEMON="true"
-USBAUTO="true"
+USBAUTO="false"
 DEVICES="${gnss_dev} /dev/pps0"
-GPSD_OPTIONS="-n"
+GPSD_OPTIONS="-n -b -s 115200"
 GPSD_EOF
 
 systemctl enable gpsd.socket chrony >/dev/null 2>&1 || true

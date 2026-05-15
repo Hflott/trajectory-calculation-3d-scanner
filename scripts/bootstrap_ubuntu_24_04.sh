@@ -279,9 +279,9 @@ configure_gpsd() {
   log "Configuring gpsd (${gpsd_cfg})"
   run_root tee "${gpsd_cfg}" >/dev/null <<EOF
 START_DAEMON="true"
-USBAUTO="true"
+USBAUTO="false"
 DEVICES="${devices}"
-GPSD_OPTIONS="-n"
+GPSD_OPTIONS="-n -b -s 115200"
 EOF
 }
 

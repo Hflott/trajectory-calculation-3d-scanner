@@ -22,6 +22,7 @@ GNSS_PREFLIGHT_HELPER="/usr/local/sbin/subsea-rover-gnss-preflight"
 RUN_ROS_CLEANUP="true"
 RUN_GNSS_PREFLIGHT="true"
 RESTART_GPSD_CHRONY="true"
+GNSS_BAUD="${GNSS_BAUD:-115200}"
 
 FIELD_LAUNCH_ARGS=(
   "start_gpsd_client:=true"
@@ -331,6 +332,13 @@ gpsd_config_matches_detected_device() {
   return 1
 }
 
+gpsd_config_is_current() {
+  gpsd_config_matches_detected_device || return 1
+  grep -qxF 'USBAUTO="false"' /etc/default/gpsd 2>/dev/null || return 1
+  grep -qxF "GPSD_OPTIONS=\"-n -b -s ${GNSS_BAUD}\"" /etc/default/gpsd 2>/dev/null || return 1
+  return 0
+}
+
 run_gnss_preflight_as_root() {
   local tty_rule='KERNEL=="ttyAMA[0-9]*", GROUP="dialout", MODE="0660"'
   local tty_rule_file='/etc/udev/rules.d/99-ttyama.rules'
@@ -372,9 +380,9 @@ run_gnss_preflight_as_root() {
 
   cat >/etc/default/gpsd <<EOF
 START_DAEMON="true"
-USBAUTO="true"
+USBAUTO="false"
 DEVICES="${gnss_dev} /dev/pps0"
-GPSD_OPTIONS="-n"
+GPSD_OPTIONS="-n -b -s ${GNSS_BAUD}"
 EOF
 
   systemctl enable gpsd.socket chrony >/dev/null 2>&1 || true
@@ -384,11 +392,11 @@ EOF
 run_gnss_preflight() {
   if [[ -x "${GNSS_PREFLIGHT_HELPER}" ]]; then
     if sudo -n "${GNSS_PREFLIGHT_HELPER}" >/dev/null 2>&1; then
-      if gpsd_config_matches_detected_device; then
+      if gpsd_config_is_current; then
         echo "Applied GNSS UART preflight with passwordless helper."
         return 0
       fi
-      echo "Existing GNSS helper did not update gpsd to the detected UART; applying refreshed preflight..."
+      echo "Existing GNSS helper left stale gpsd settings; applying refreshed preflight..."
     fi
   fi
 

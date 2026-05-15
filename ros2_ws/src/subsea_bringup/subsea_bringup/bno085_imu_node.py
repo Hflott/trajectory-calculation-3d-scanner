@@ -62,6 +62,7 @@ class Bno085ImuNode(Node):
         # the ROS executor reconnect timer never race on these fields.
         self._sensor_lock = threading.Lock()
         self._sensor = None
+        self._i2c = None
         self._lib_error: Optional[str] = None
         self._last_warn = ""
         self._enabled_rotation = False
@@ -90,7 +91,24 @@ class Bno085ImuNode(Node):
         self._stop_event.set()
         if hasattr(self, "_read_thread") and self._read_thread.is_alive():
             self._read_thread.join(timeout=2.0)
+        with self._sensor_lock:
+            self._close_sensor_locked()
         super().destroy_node()
+
+    def _close_sensor_locked(self) -> None:
+        self._sensor = None
+        self._supports_cached_reads = False
+        i2c = self._i2c
+        self._i2c = None
+        if i2c is None:
+            return
+        for method in ("deinit", "close", "unlock"):
+            fn = getattr(i2c, method, None)
+            if callable(fn):
+                try:
+                    fn()
+                except Exception:
+                    pass
 
     def _warn_once(self, text: str) -> None:
         if text != self._last_warn:
@@ -118,6 +136,7 @@ class Bno085ImuNode(Node):
             return
 
         self._lib_error = None
+        i2c = None
         try:
             if self._i2c_bus == 1:
                 i2c = busio.I2C(board.SCL, board.SDA)
@@ -134,6 +153,9 @@ class Bno085ImuNode(Node):
                 i2c_path = f"/dev/i2c-{self._i2c_bus}"
 
             sensor = BNO08X_I2C(i2c, address=self._addr)
+            # The BNO085 can be slow to settle after a warm process restart.
+            # A short pause avoids feature-enable races on software I2C buses.
+            time.sleep(0.2)
             bno_report_accel = int(BNO_REPORT_ACCELEROMETER)
             bno_report_gyro = int(BNO_REPORT_GYROSCOPE)
             bno_report_rot = int(BNO_REPORT_ROTATION_VECTOR)
@@ -169,7 +191,17 @@ class Bno085ImuNode(Node):
                 self._enabled_gyro = enabled_gyro
                 self._supports_cached_reads = supports_cached
                 self._read_error_count = 0
+                old_i2c = self._i2c
+                self._i2c = i2c
                 self._sensor = sensor
+            if old_i2c is not None and old_i2c is not i2c:
+                for method in ("deinit", "close", "unlock"):
+                    fn = getattr(old_i2c, method, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
 
             self.get_logger().info(
                 f"BNO085 ready on I2C {i2c_path} address 0x{self._addr:02X}; "
@@ -180,8 +212,15 @@ class Bno085ImuNode(Node):
             )
         except Exception as e:
             with self._sensor_lock:
-                self._sensor = None
-                self._supports_cached_reads = False
+                self._close_sensor_locked()
+            if i2c is not None:
+                for method in ("deinit", "close", "unlock"):
+                    fn = getattr(i2c, method, None)
+                    if callable(fn):
+                        try:
+                            fn()
+                        except Exception:
+                            pass
             self._warn_once(
                 f"BNO085 init failed on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {e} "
                 f"(check wiring and i2cdetect -y -r {self._i2c_bus})"
@@ -308,8 +347,7 @@ class Bno085ImuNode(Node):
                 self._read_error_count += 1
                 error_count = self._read_error_count
                 if error_count >= self._read_error_reset_threshold:
-                    self._sensor = None
-                    self._supports_cached_reads = False
+                    self._close_sensor_locked()
             if error_count >= self._read_error_reset_threshold:
                 self._warn_once(
                     f"BNO085 read error: {e}; reached {error_count} consecutive errors, "

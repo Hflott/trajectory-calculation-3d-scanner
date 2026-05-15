@@ -265,9 +265,10 @@ run_ros_prelaunch_cleanup() {
   if command -v pkill >/dev/null 2>&1; then
     pkill -f "ros2 launch subsea_bringup rover_app.launch.py" >/dev/null 2>&1 || true
     pkill -f "subsea_ui_node|capture_service|navsat_transform_node|ekf_node" >/dev/null 2>&1 || true
+    pkill -f "bno085_imu_node|gpsd_json_fix_bridge" >/dev/null 2>&1 || true
     pkill -f "component_container_mt.*gps_container|__node:=gps_container" >/dev/null 2>&1 || true
   fi
-  sleep 0.3
+  sleep 0.8
 }
 
 run_gnss_preflight_as_root() {

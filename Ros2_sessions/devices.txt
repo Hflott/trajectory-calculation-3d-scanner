@@ -1,0 +1,9 @@
+# devices
+# command: ls -l /dev/pps* /dev/ttyAMA* 2>/dev/null; echo; ls -l /dev/serial/by-id/ 2>/dev/null || true
+# time: 2026-05-15T03:12:40Z
+
+crw-rw---- 1 root root    249,  0 May 15 03:12 /dev/pps0
+crw------- 1 root root    249,  1 May 15 03:12 /dev/pps1
+crw------- 1 root root    249,  2 May 15 05:12 /dev/pps2
+crw-rw---- 1 root dialout 204, 74 May 15 05:12 /dev/ttyAMA10
+

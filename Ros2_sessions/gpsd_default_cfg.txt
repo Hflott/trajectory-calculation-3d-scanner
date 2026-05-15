@@ -1,0 +1,8 @@
+# gpsd_default_cfg
+# command: grep -E 'START_DAEMON|USBAUTO|DEVICES|GPSD_OPTIONS' /etc/default/gpsd 2>/dev/null || true
+# time: 2026-05-15T03:12:40Z
+
+START_DAEMON="true"
+USBAUTO="true"
+DEVICES="/dev/ttyAMA10 /dev/pps0"
+GPSD_OPTIONS="-n"

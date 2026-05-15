@@ -1,0 +1,4 @@
+Rover diagnostics started: 2026-05-15T02:32:44Z
+Output dir: /home/subseascanning/field_logs/rover_diag_20260515_043244
+Skipping ppstest in script (sudo password required).
+Manual command: sudo timeout 8s ppstest /dev/pps0

@@ -1,0 +1,10 @@
+# pps_sysfs
+# command: for p in /sys/class/pps/pps*; do echo "== $(basename "$p") =="; cat "$p/name"; done
+# time: 2026-05-15T03:12:40Z
+
+== pps0 ==
+pps@b.-1
+== pps1 ==
+ptp0
+== pps2 ==
+ttyAMA10

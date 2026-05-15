@@ -1,0 +1,38 @@
+# gpsd_status
+# command: systemctl --no-pager --full status gpsd.socket gpsd.service 2>/dev/null || true
+# time: 2026-05-15T02:32:44Z
+
+● gpsd.socket - GPS (Global Positioning System) Daemon Sockets
+     Loaded: loaded (/usr/lib/systemd/system/gpsd.socket; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 04:28:45 CEST; 3min 59s ago
+   Triggers: ● gpsd.service
+     Listen: /run/gpsd.sock (Stream)
+             [::1]:2947 (Stream)
+             127.0.0.1:2947 (Stream)
+      Tasks: 0 (limit: 9051)
+     Memory: 12.0K (peak: 264.0K)
+        CPU: 1ms
+     CGroup: /system.slice/gpsd.socket
+
+May 15 04:28:45 subseascanning systemd[1]: Listening on gpsd.socket - GPS (Global Positioning System) Daemon Sockets.
+
+● gpsd.service - GPS (Global Positioning System) Daemon
+     Loaded: loaded (/usr/lib/systemd/system/gpsd.service; disabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 04:28:45 CEST; 3min 59s ago
+TriggeredBy: ● gpsd.socket
+       Docs: man:gpsd
+    Process: 15430 ExecStart=/usr/sbin/gpsd $GPSD_OPTIONS $OPTIONS $DEVICES (code=exited, status=0/SUCCESS)
+   Main PID: 15431 (gpsd)
+      Tasks: 2 (limit: 9051)
+     Memory: 844.0K (peak: 1.1M)
+        CPU: 28ms
+     CGroup: /system.slice/gpsd.service
+             └─15431 /usr/sbin/gpsd -n /dev/ttyAMA0 /dev/pps0
+
+May 15 04:28:45 subseascanning systemd[1]: Starting gpsd.service - GPS (Global Positioning System) Daemon...
+May 15 04:28:45 subseascanning (gpsd)[15430]: gpsd.service: Referenced but unset environment variable evaluates to an empty string: OPTIONS
+May 15 04:28:45 subseascanning systemd[1]: Started gpsd.service - GPS (Global Positioning System) Daemon.
+May 15 04:28:45 subseascanning gpsd[15431]: gpsd:ERROR: SER: stat(/dev/ttyAMA0) failed: No such file or directory(2)
+May 15 04:28:45 subseascanning gpsd[15431]: gpsd:ERROR: initial GPS device /dev/ttyAMA0 open failed
+May 15 04:28:47 subseascanning gpsd[15431]: gpsd:ERROR: SER: stat(/dev/ttyAMA0) failed: No such file or directory(2)
+May 15 04:28:47 subseascanning gpsd[15431]: gpsd:ERROR: /dev/ttyAMA0: device activation failed, freeing device.

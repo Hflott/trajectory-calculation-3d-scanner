@@ -1,0 +1,4 @@
+# ros_echo_capture_debug_once
+# command: timeout 8s ros2 topic echo /capture/debug --once
+# time: 2026-05-15T02:38:23Z
+

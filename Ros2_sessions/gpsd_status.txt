@@ -1,0 +1,34 @@
+# gpsd_status
+# command: systemctl --no-pager --full status gpsd.socket gpsd.service 2>/dev/null || true
+# time: 2026-05-15T03:12:40Z
+
+● gpsd.socket - GPS (Global Positioning System) Daemon Sockets
+     Loaded: loaded (/usr/lib/systemd/system/gpsd.socket; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 05:12:19 CEST; 21s ago
+   Triggers: ● gpsd.service
+     Listen: /run/gpsd.sock (Stream)
+             [::1]:2947 (Stream)
+             127.0.0.1:2947 (Stream)
+      Tasks: 0 (limit: 9051)
+     Memory: 12.0K (peak: 264.0K)
+        CPU: 2ms
+     CGroup: /system.slice/gpsd.socket
+
+May 15 05:12:19 subseascanning systemd[1]: Listening on gpsd.socket - GPS (Global Positioning System) Daemon Sockets.
+
+● gpsd.service - GPS (Global Positioning System) Daemon
+     Loaded: loaded (/usr/lib/systemd/system/gpsd.service; disabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 05:12:19 CEST; 21s ago
+TriggeredBy: ● gpsd.socket
+       Docs: man:gpsd
+    Process: 22124 ExecStart=/usr/sbin/gpsd $GPSD_OPTIONS $OPTIONS $DEVICES (code=exited, status=0/SUCCESS)
+   Main PID: 22125 (gpsd)
+      Tasks: 3 (limit: 9051)
+     Memory: 944.0K (peak: 1.3M)
+        CPU: 38ms
+     CGroup: /system.slice/gpsd.service
+             └─22125 /usr/sbin/gpsd -n /dev/ttyAMA10 /dev/pps0
+
+May 15 05:12:19 subseascanning systemd[1]: Starting gpsd.service - GPS (Global Positioning System) Daemon...
+May 15 05:12:19 subseascanning (gpsd)[22124]: gpsd.service: Referenced but unset environment variable evaluates to an empty string: OPTIONS
+May 15 05:12:19 subseascanning systemd[1]: Started gpsd.service - GPS (Global Positioning System) Daemon.

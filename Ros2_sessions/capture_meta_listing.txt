@@ -1,0 +1,14 @@
+# capture_meta_listing
+# command: ls -1t '/home/subseascanning/captures'/*_meta.json 2>/dev/null | head -n 10
+# time: 2026-05-15T03:13:55Z
+
+/home/subseascanning/captures/btn_20260515_051229_282_meta.json
+/home/subseascanning/captures/btn_20260515_051229_282_cam0_camera_meta.json
+/home/subseascanning/captures/btn_20260515_051229_282_cam1_camera_meta.json
+/home/subseascanning/captures/btn_20260515_043731_976_meta.json
+/home/subseascanning/captures/btn_20260515_043731_976_cam1_camera_meta.json
+/home/subseascanning/captures/btn_20260515_043731_976_cam0_camera_meta.json
+/home/subseascanning/captures/btn_20260515_043718_156_meta.json
+/home/subseascanning/captures/btn_20260515_043718_156_cam1_camera_meta.json
+/home/subseascanning/captures/btn_20260515_043718_156_cam0_camera_meta.json
+/home/subseascanning/captures/btn_20260515_043706_917_meta.json

@@ -1,0 +1,4 @@
+# ros_echo_capture_event_once
+# command: timeout 8s ros2 topic echo /capture/events --once
+# time: 2026-05-15T03:13:29Z
+

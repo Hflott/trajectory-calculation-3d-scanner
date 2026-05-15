@@ -1,0 +1,5 @@
+# uart_nmea
+# command: if [[ -n '/dev/ttyAMA10' ]]; then timeout 8s cat '/dev/ttyAMA10' | grep -aE 'RMC|GGA|ZDA'; else echo 'No GNSS serial device detected'; fi
+# time: 2026-05-15T03:12:50Z
+
+cat: /dev/ttyAMA10: Device or resource busy

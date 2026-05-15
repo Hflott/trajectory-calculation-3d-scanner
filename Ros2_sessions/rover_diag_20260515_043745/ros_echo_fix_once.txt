@@ -1,0 +1,4 @@
+# ros_echo_fix_once
+# command: timeout 8s ros2 topic echo /fix --qos-reliability reliable --once
+# time: 2026-05-15T02:38:04Z
+

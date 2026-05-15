@@ -1,0 +1,7 @@
+Rover diagnostics started: 2026-05-15T03:12:40Z
+Output dir: /home/subseascanning/field_logs/rover_diag_20260515_051240
+Detected GNSS serial device: /dev/ttyAMA10
+Skipping ppstest in script (sudo password required).
+Manual command: sudo timeout 8s ppstest /dev/pps0
+Diagnostics finished: 2026-05-15T03:13:55Z
+Archive: /home/subseascanning/field_logs/rover_diag_20260515_051240.tar.gz

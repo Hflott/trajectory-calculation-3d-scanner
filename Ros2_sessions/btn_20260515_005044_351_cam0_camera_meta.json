@@ -1,0 +1,16 @@
+{
+    "ExposureTime": 14369,
+    "SensorTimestamp": 289989054959000,
+    "FrameWallClock": 1778799047300960768,
+    "ColourTemperature": 6172,
+    "ScalerCrop": "(0, 0)/1456x1088",
+    "ColourCorrectionMatrix": [ 1.974840, -0.594227, -0.380611, -0.321382, 2.139449, -0.818076, -0.079415, -0.370455, 1.449867 ],
+    "FocusFoM": 15,
+    "SensorBlackLevels": [ 3840, 3840, 3840, 3840 ],
+    "DigitalGain": 1.003032,
+    "AeState": 1,
+    "Lux": 118.705383,
+    "FrameDuration": 16577,
+    "AnalogueGain": 1.496236,
+    "ColourGains": [ 3.316729, 1.664982 ]
+}

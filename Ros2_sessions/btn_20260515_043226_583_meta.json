@@ -1,0 +1,488 @@
+{
+  "cameras": {
+    "cam0": {
+      "capture_metadata": {
+        "attempted_backend": "rpicam",
+        "backend": "rpicam",
+        "exists": true,
+        "exposure_midpoint_source": "frame_wall_clock_minus_half_exposure",
+        "exposure_midpoint_stamp": "1778812349.266728116",
+        "exposure_midpoint_system_ns": 1778812349266728116,
+        "exposure_ms": 49.999,
+        "exposure_time_us": 49999,
+        "frame_wall_clock_ns": 1778812349291727616,
+        "frame_wall_clock_stamp": "1778812349.291727616",
+        "metadata": {
+          "AeState": 1,
+          "AnalogueGain": 2.754229,
+          "ColourCorrectionMatrix": [
+            1.297164,
+            -0.027829,
+            -0.269334,
+            -0.154751,
+            1.438292,
+            -0.283541,
+            0.173958,
+            -0.365521,
+            1.191563
+          ],
+          "ColourGains": [
+            2.020026,
+            3.937198
+          ],
+          "ColourTemperature": 2450,
+          "DigitalGain": 1.005412,
+          "ExposureTime": 49999,
+          "FocusFoM": 54,
+          "FrameDuration": 50073,
+          "FrameWallClock": 1778812349291727616,
+          "Lux": 41.516552,
+          "ScalerCrop": "(0, 0)/1456x1088",
+          "SensorBlackLevels": [
+            3840,
+            3840,
+            3840,
+            3840
+          ],
+          "SensorTimestamp": 4793596265000
+        },
+        "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam0_camera_meta.json",
+        "requested_backend": "auto",
+        "returncode": 0,
+        "stamp_source": "exposure_midpoint_system_ns",
+        "status": "ok",
+        "stderr": "[1:19:51.887561263] [16303]  INFO Camera camera_manager.cpp:340 libcamera v0.7.0+rpt20260205+2-fe601eb6\n[1:19:51.920662071] [16309]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.925138748] [16309]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.935580673] [16309]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@88000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.935774599] [16309]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a to CFE device /dev/media2 and ISP device /dev/media0 using PiSP variant BCM2712_D0\n[1:19:51.935860358] [16309]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.937730799] [16309]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.947732965] [16309]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@80000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.947885502] [16309]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a to CFE device /dev/media3 and ISP device /dev/media1 using PiSP variant BCM2712_D0\nWARNING: Capture will not make use of temporal denoise\n         Consider using the --zsl option for best results, for example:\n         rpicam-still --zsl -o /home/subseascanning/captures/btn_20260515_043226_583_cam0.jpg\n[1:19:51.961125237] [16309]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 728:544:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1318\nStream configuration adjusted\n[1:19:51.961695236] [16303]  INFO Camera camera.cpp:1215 configuring streams: (0) 728x544-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:51.961822180] [16309]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\n[1:19:53.500472095] [16309]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 1456:1088:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1000\nStream configuration adjusted\n[1:19:53.500631725] [16303]  INFO Camera camera.cpp:1215 configuring streams: (0) 1456x1088-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:53.502938350] [16309]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\nStill capture image received\n"
+      },
+      "deblur": {
+        "camera": "cam0",
+        "capture_metadata": {
+          "attempted_backend": "rpicam",
+          "backend": "rpicam",
+          "exists": true,
+          "exposure_midpoint_source": "frame_wall_clock_minus_half_exposure",
+          "exposure_midpoint_stamp": "1778812349.266728116",
+          "exposure_midpoint_system_ns": 1778812349266728116,
+          "exposure_ms": 49.999,
+          "exposure_time_us": 49999,
+          "frame_wall_clock_ns": 1778812349291727616,
+          "frame_wall_clock_stamp": "1778812349.291727616",
+          "metadata": {
+            "AeState": 1,
+            "AnalogueGain": 2.754229,
+            "ColourCorrectionMatrix": [
+              1.297164,
+              -0.027829,
+              -0.269334,
+              -0.154751,
+              1.438292,
+              -0.283541,
+              0.173958,
+              -0.365521,
+              1.191563
+            ],
+            "ColourGains": [
+              2.020026,
+              3.937198
+            ],
+            "ColourTemperature": 2450,
+            "DigitalGain": 1.005412,
+            "ExposureTime": 49999,
+            "FocusFoM": 54,
+            "FrameDuration": 50073,
+            "FrameWallClock": 1778812349291727616,
+            "Lux": 41.516552,
+            "ScalerCrop": "(0, 0)/1456x1088",
+            "SensorBlackLevels": [
+              3840,
+              3840,
+              3840,
+              3840
+            ],
+            "SensorTimestamp": 4793596265000
+          },
+          "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam0_camera_meta.json",
+          "requested_backend": "auto",
+          "returncode": 0,
+          "stamp_source": "exposure_midpoint_system_ns",
+          "status": "ok",
+          "stderr": "[1:19:51.887561263] [16303]  INFO Camera camera_manager.cpp:340 libcamera v0.7.0+rpt20260205+2-fe601eb6\n[1:19:51.920662071] [16309]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.925138748] [16309]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.935580673] [16309]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@88000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.935774599] [16309]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a to CFE device /dev/media2 and ISP device /dev/media0 using PiSP variant BCM2712_D0\n[1:19:51.935860358] [16309]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.937730799] [16309]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.947732965] [16309]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@80000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.947885502] [16309]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a to CFE device /dev/media3 and ISP device /dev/media1 using PiSP variant BCM2712_D0\nWARNING: Capture will not make use of temporal denoise\n         Consider using the --zsl option for best results, for example:\n         rpicam-still --zsl -o /home/subseascanning/captures/btn_20260515_043226_583_cam0.jpg\n[1:19:51.961125237] [16309]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 728:544:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1318\nStream configuration adjusted\n[1:19:51.961695236] [16303]  INFO Camera camera.cpp:1215 configuring streams: (0) 728x544-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:51.961822180] [16309]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\n[1:19:53.500472095] [16309]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 1456:1088:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1000\nStream configuration adjusted\n[1:19:53.500631725] [16303]  INFO Camera camera.cpp:1215 configuring streams: (0) 1456x1088-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:53.502938350] [16309]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\nStill capture image received\n"
+        },
+        "deblur_strength": 1.0,
+        "enabled": true,
+        "exposure_end": "1778812349.291727616",
+        "exposure_ms": 49.999,
+        "exposure_source": "camera_metadata",
+        "exposure_start": "1778812349.241728616",
+        "exposure_time_us": 49999,
+        "focal_px": 1002.0060381030144,
+        "fov_deg": 72.0,
+        "image_stamp": "1778812349.266728116",
+        "image_stamp_raw": "1778812349.266728116",
+        "image_stamp_reference": "midpoint",
+        "integration_method": "trapezoidal",
+        "kernel_angle_deg": 0.0,
+        "kernel_angle_rad": 0.0,
+        "kernel_length_px": 0.0,
+        "max_time_reference_age_ms": 2000.0,
+        "nearest_imu_fallback_policy": "disabled",
+        "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam0_deblur.jpg",
+        "psf_angle_deg": 0.0,
+        "psf_length_px": 0.0,
+        "require_time_reference": true,
+        "rl_iterations": 12,
+        "status": "copied_missing_time_reference",
+        "timestamp_offset_ms": 0.0,
+        "timestamp_source": "pps_disciplined_system_clock"
+      },
+      "deblur_adjusted_stamp": "1778812349.266728116",
+      "deblur_timestamp_offset_ms": 0.0,
+      "exposure_source": "camera_metadata",
+      "exposure_time_us": 49999,
+      "nearest_imu": {
+        "angular_velocity": [
+          0.0390625,
+          0.05078125,
+          0.234375
+        ],
+        "dt_ms": 1.744348,
+        "linear_acceleration": [
+          -0.73828125,
+          2.35546875,
+          9.36328125
+        ],
+        "stamp": "1778812349.268472464"
+      },
+      "offset_from_trigger_ms": 2681.63216,
+      "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam0.jpg",
+      "stamp": "1778812349.266728116",
+      "stamp_reference": "midpoint",
+      "timestamp_source": "pps_disciplined_system_clock"
+    },
+    "cam1": {
+      "capture_metadata": {
+        "attempted_backend": "rpicam",
+        "backend": "rpicam",
+        "exists": true,
+        "exposure_midpoint_source": "frame_wall_clock_minus_half_exposure",
+        "exposure_midpoint_stamp": "1778812349.272830132",
+        "exposure_midpoint_system_ns": 1778812349272830132,
+        "exposure_ms": 49.999,
+        "exposure_time_us": 49999,
+        "frame_wall_clock_ns": 1778812349297829632,
+        "frame_wall_clock_stamp": "1778812349.297829632",
+        "metadata": {
+          "AeState": 1,
+          "AnalogueGain": 2.951209,
+          "ColourCorrectionMatrix": [
+            1.297164,
+            -0.027829,
+            -0.269334,
+            -0.154751,
+            1.438292,
+            -0.283541,
+            0.173958,
+            -0.365521,
+            1.191563
+          ],
+          "ColourGains": [
+            1.989223,
+            3.870018
+          ],
+          "ColourTemperature": 2450,
+          "DigitalGain": 1.003222,
+          "ExposureTime": 49999,
+          "FocusFoM": 62,
+          "FrameDuration": 50073,
+          "FrameWallClock": 1778812349297829632,
+          "Lux": 39.324554,
+          "ScalerCrop": "(0, 0)/1456x1088",
+          "SensorBlackLevels": [
+            3840,
+            3840,
+            3840,
+            3840
+          ],
+          "SensorTimestamp": 4793602367000
+        },
+        "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam1_camera_meta.json",
+        "requested_backend": "auto",
+        "returncode": 0,
+        "stamp_source": "exposure_midpoint_system_ns",
+        "status": "ok",
+        "stderr": "[1:19:51.893620362] [16304]  INFO Camera camera_manager.cpp:340 libcamera v0.7.0+rpt20260205+2-fe601eb6\n[1:19:51.921260126] [16310]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.925138711] [16310]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.935580358] [16310]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@88000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.935700432] [16310]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a to CFE device /dev/media2 and ISP device /dev/media0 using PiSP variant BCM2712_D0\n[1:19:51.935859691] [16310]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.937727188] [16310]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.947731706] [16310]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@80000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.947821799] [16310]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a to CFE device /dev/media3 and ISP device /dev/media1 using PiSP variant BCM2712_D0\nWARNING: Capture will not make use of temporal denoise\n         Consider using the --zsl option for best results, for example:\n         rpicam-still --zsl -o /home/subseascanning/captures/btn_20260515_043226_583_cam1.jpg\n[1:19:51.961289996] [16310]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 728:544:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1318\nStream configuration adjusted\n[1:19:51.961731513] [16304]  INFO Camera camera.cpp:1215 configuring streams: (0) 728x544-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:51.961848402] [16310]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\n[1:19:53.504124589] [16310]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 1456:1088:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1000\nStream configuration adjusted\n[1:19:53.504320625] [16304]  INFO Camera camera.cpp:1215 configuring streams: (0) 1456x1088-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:53.507347731] [16310]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\nStill capture image received\n"
+      },
+      "deblur": {
+        "camera": "cam1",
+        "capture_metadata": {
+          "attempted_backend": "rpicam",
+          "backend": "rpicam",
+          "exists": true,
+          "exposure_midpoint_source": "frame_wall_clock_minus_half_exposure",
+          "exposure_midpoint_stamp": "1778812349.272830132",
+          "exposure_midpoint_system_ns": 1778812349272830132,
+          "exposure_ms": 49.999,
+          "exposure_time_us": 49999,
+          "frame_wall_clock_ns": 1778812349297829632,
+          "frame_wall_clock_stamp": "1778812349.297829632",
+          "metadata": {
+            "AeState": 1,
+            "AnalogueGain": 2.951209,
+            "ColourCorrectionMatrix": [
+              1.297164,
+              -0.027829,
+              -0.269334,
+              -0.154751,
+              1.438292,
+              -0.283541,
+              0.173958,
+              -0.365521,
+              1.191563
+            ],
+            "ColourGains": [
+              1.989223,
+              3.870018
+            ],
+            "ColourTemperature": 2450,
+            "DigitalGain": 1.003222,
+            "ExposureTime": 49999,
+            "FocusFoM": 62,
+            "FrameDuration": 50073,
+            "FrameWallClock": 1778812349297829632,
+            "Lux": 39.324554,
+            "ScalerCrop": "(0, 0)/1456x1088",
+            "SensorBlackLevels": [
+              3840,
+              3840,
+              3840,
+              3840
+            ],
+            "SensorTimestamp": 4793602367000
+          },
+          "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam1_camera_meta.json",
+          "requested_backend": "auto",
+          "returncode": 0,
+          "stamp_source": "exposure_midpoint_system_ns",
+          "status": "ok",
+          "stderr": "[1:19:51.893620362] [16304]  INFO Camera camera_manager.cpp:340 libcamera v0.7.0+rpt20260205+2-fe601eb6\n[1:19:51.921260126] [16310]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.925138711] [16310]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.935580358] [16310]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@88000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.935700432] [16310]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@88000/imx296@1a to CFE device /dev/media2 and ISP device /dev/media0 using PiSP variant BCM2712_D0\n[1:19:51.935859691] [16310]  INFO RPI pisp.cpp:720 libpisp version v1.3.0 9ba67e6680f0 19-03-2026 (18:46:56)\n[1:19:51.937727188] [16310]  INFO IPAProxy ipa_proxy.cpp:180 Using tuning file /usr/local/share/libcamera/ipa/rpi/pisp/imx296.json\n[1:19:51.947731706] [16310]  INFO Camera camera_manager.cpp:223 Adding camera '/base/axi/pcie@120000/rp1/i2c@80000/imx296@1a' for pipeline handler rpi/pisp\n[1:19:51.947821799] [16310]  INFO RPI pisp.cpp:1181 Registered camera /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a to CFE device /dev/media3 and ISP device /dev/media1 using PiSP variant BCM2712_D0\nWARNING: Capture will not make use of temporal denoise\n         Consider using the --zsl option for best results, for example:\n         rpicam-still --zsl -o /home/subseascanning/captures/btn_20260515_043226_583_cam1.jpg\n[1:19:51.961289996] [16310]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 728:544:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1318\nStream configuration adjusted\n[1:19:51.961731513] [16304]  INFO Camera camera.cpp:1215 configuring streams: (0) 728x544-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:51.961848402] [16310]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\n[1:19:53.504124589] [16310]  WARN V4L2 v4l2_pixelformat.cpp:346 Unsupported V4L2 pixel format RPBP\nMode selection for 1456:1088:12:P\n    SBGGR10_CSI2P,1456x1088/0 - Score: 1000\nStream configuration adjusted\n[1:19:53.504320625] [16304]  INFO Camera camera.cpp:1215 configuring streams: (0) 1456x1088-YUV420/sYCC (1) 1456x1088-BGGR_PISP_COMP1/RAW\n[1:19:53.507347731] [16310]  INFO RPI pisp.cpp:1485 Sensor: /base/axi/pcie@120000/rp1/i2c@80000/imx296@1a - Selected sensor format: 1456x1088-SBGGR10_1X10/RAW - Selected CFE format: 1456x1088-PC1B/RAW\nStill capture image received\n"
+        },
+        "deblur_strength": 1.0,
+        "enabled": true,
+        "exposure_end": "1778812349.297829632",
+        "exposure_ms": 49.999,
+        "exposure_source": "camera_metadata",
+        "exposure_start": "1778812349.247830632",
+        "exposure_time_us": 49999,
+        "focal_px": 1002.0060381030144,
+        "fov_deg": 72.0,
+        "image_stamp": "1778812349.272830132",
+        "image_stamp_raw": "1778812349.272830132",
+        "image_stamp_reference": "midpoint",
+        "integration_method": "trapezoidal",
+        "kernel_angle_deg": 0.0,
+        "kernel_angle_rad": 0.0,
+        "kernel_length_px": 0.0,
+        "max_time_reference_age_ms": 2000.0,
+        "nearest_imu_fallback_policy": "disabled",
+        "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam1_deblur.jpg",
+        "psf_angle_deg": 0.0,
+        "psf_length_px": 0.0,
+        "require_time_reference": true,
+        "rl_iterations": 12,
+        "status": "copied_missing_time_reference",
+        "timestamp_offset_ms": 0.0,
+        "timestamp_source": "pps_disciplined_system_clock"
+      },
+      "deblur_adjusted_stamp": "1778812349.272830132",
+      "deblur_timestamp_offset_ms": 0.0,
+      "exposure_source": "camera_metadata",
+      "exposure_time_us": 49999,
+      "nearest_imu": {
+        "angular_velocity": [
+          0.0390625,
+          0.05078125,
+          0.234375
+        ],
+        "dt_ms": -4.357668,
+        "linear_acceleration": [
+          -0.73828125,
+          2.35546875,
+          9.36328125
+        ],
+        "stamp": "1778812349.268472464"
+      },
+      "offset_from_trigger_ms": 2687.734176,
+      "path": "/home/subseascanning/captures/btn_20260515_043226_583_cam1.jpg",
+      "stamp": "1778812349.272830132",
+      "stamp_reference": "midpoint",
+      "timestamp_source": "pps_disciplined_system_clock"
+    }
+  },
+  "mode": "still",
+  "rig_extrinsics": {
+    "base_frame": {
+      "origin": "center_of_beam",
+      "x": "cam0_to_cam1",
+      "y": "camera_viewing_direction",
+      "z": "up"
+    },
+    "camera_frame": {
+      "x": "image_right",
+      "y": "image_down",
+      "z": "optical_forward"
+    },
+    "cameras": {
+      "cam0": {
+        "base_to_camera_rotation": [
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ]
+        ],
+        "imu_to_camera_rotation": [
+          [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0
+          ]
+        ],
+        "position_base_m": [
+          -0.367,
+          -0.003,
+          0.063
+        ],
+        "position_from_imu_m": [
+          -0.447,
+          -0.003,
+          0.043
+        ]
+      },
+      "cam1": {
+        "base_to_camera_rotation": [
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ]
+        ],
+        "imu_to_camera_rotation": [
+          [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          [
+            0.0,
+            -1.0,
+            0.0
+          ]
+        ],
+        "position_base_m": [
+          0.354,
+          -0.003,
+          0.063
+        ],
+        "position_from_imu_m": [
+          0.27399999999999997,
+          -0.003,
+          0.043
+        ]
+      }
+    },
+    "enabled_for_deblur": true,
+    "gnss": {
+      "baseline_length_m": 1.08,
+      "baseline_m": [
+        1.08,
+        0.0,
+        0.0
+      ],
+      "left_position_base_m": [
+        -0.54,
+        0.0,
+        0.05
+      ],
+      "right_position_base_m": [
+        0.54,
+        0.0,
+        0.05
+      ]
+    },
+    "imu": {
+      "imu_to_base_rotation": [
+        [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "position_base_m": [
+        0.08,
+        0.0,
+        0.02
+      ]
+    }
+  },
+  "schema_version": 2,
+  "session_id": "btn_20260515_043226_583",
+  "time_base": {
+    "cam0_deblur_timestamp_offset_ms": 0.0,
+    "cam1_deblur_timestamp_offset_ms": 0.0,
+    "common_deblur_timestamp_offset_ms": 0.0,
+    "image_stamp_reference": "midpoint",
+    "image_timestamp_source": "pps_disciplined_system_clock"
+  },
+  "trajectory": {
+    "enabled": false,
+    "reason": "no odometry samples",
+    "sample_rate_hz": 100.0,
+    "samples": [],
+    "window_ms": 1000.0
+  },
+  "trigger_stamp": "1778812346.585095956"
+}

@@ -1,0 +1,11 @@
+# sys_info
+# command: uname -a; echo; uptime; echo; whoami; echo; id
+# time: 2026-05-15T02:32:44Z
+
+Linux subseascanning 6.8.0-1053-raspi #57-Ubuntu SMP PREEMPT_DYNAMIC Wed Apr 15 06:45:56 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+
+ 04:32:44 up  1:20,  1 user,  load average: 3.27, 2.11, 1.46
+
+subseascanning
+
+uid=1000(subseascanning) gid=1003(subseascanning) groups=1003(subseascanning),4(adm),20(dialout),24(cdrom),27(sudo),29(audio),44(video),46(plugdev),60(games),100(users),107(netdev),111(ssl-cert),992(render),995(input),1000(gpio),1001(spi),1002(i2c)

@@ -1,0 +1,6 @@
+# gnss_detected_device
+# command: echo '/dev/ttyAMA10'; if [[ -n '/dev/ttyAMA10' ]]; then readlink -f '/dev/ttyAMA10' 2>/dev/null || true; fi
+# time: 2026-05-15T03:12:40Z
+
+/dev/ttyAMA10
+/dev/ttyAMA10

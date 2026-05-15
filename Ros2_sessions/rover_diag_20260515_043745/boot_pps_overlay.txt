@@ -1,0 +1,5 @@
+# boot_pps_overlay
+# command: grep -n 'dtoverlay=pps-gpio' /boot/firmware/config.txt 2>/dev/null || true
+# time: 2026-05-15T02:37:45Z
+
+19:dtoverlay=pps-gpio,gpiopin=11

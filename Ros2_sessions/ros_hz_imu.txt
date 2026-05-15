@@ -1,0 +1,12 @@
+# ros_hz_imu
+# command: timeout 8s ros2 topic hz /imu/data
+# time: 2026-05-15T03:13:46Z
+
+average rate: 23.253
+	min: 0.000s max: 0.077s std dev: 0.01773s window: 24
+average rate: 25.408
+	min: 0.000s max: 0.077s std dev: 0.01670s window: 52
+average rate: 25.535
+	min: 0.000s max: 0.077s std dev: 0.01691s window: 78
+average rate: 25.569
+	min: 0.000s max: 0.090s std dev: 0.01755s window: 104

@@ -1,0 +1,53 @@
+# ros_echo_imu_once
+# command: timeout 8s ros2 topic echo /imu/data --once
+# time: 2026-05-15T02:38:21Z
+
+header:
+  stamp:
+    sec: 1778812703
+    nanosec: 429401028
+  frame_id: imu_link
+orientation:
+  x: 0.029785141714466314
+  y: 0.05383298154131002
+  z: 0.8530879625883108
+  w: 0.5181271885534929
+orientation_covariance:
+- 0.05
+- 0.0
+- 0.0
+- 0.0
+- 0.05
+- 0.0
+- 0.0
+- 0.0
+- 0.05
+angular_velocity:
+  x: 0.01171875
+  y: 0.005859375
+  z: -0.001953125
+angular_velocity_covariance:
+- 0.02
+- 0.0
+- 0.0
+- 0.0
+- 0.02
+- 0.0
+- 0.0
+- 0.0
+- 0.02
+linear_acceleration:
+  x: -0.08984375
+  y: 1.16796875
+  z: 9.3984375
+linear_acceleration_covariance:
+- 0.1
+- 0.0
+- 0.0
+- 0.0
+- 0.1
+- 0.0
+- 0.0
+- 0.0
+- 0.1
+---

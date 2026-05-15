@@ -1,0 +1,4 @@
+# ros_hz_fix
+# command: timeout 8s ros2 topic hz /fix
+# time: 2026-05-15T02:38:40Z
+

@@ -1,0 +1,26 @@
+# chrony_status
+# command: systemctl --no-pager --full status chrony.service 2>/dev/null || true
+# time: 2026-05-15T03:12:40Z
+
+● chrony.service - chrony, an NTP client/server
+     Loaded: loaded (/usr/lib/systemd/system/chrony.service; enabled; preset: enabled)
+     Active: active (running) since Fri 2026-05-15 05:12:19 CEST; 21s ago
+       Docs: man:chronyd(8)
+             man:chronyc(1)
+             man:chrony.conf(5)
+    Process: 22107 ExecStart=/usr/lib/systemd/scripts/chronyd-starter.sh $DAEMON_OPTS (code=exited, status=0/SUCCESS)
+   Main PID: 22117 (chronyd)
+      Tasks: 2 (limit: 9051)
+     Memory: 1.3M (peak: 2.4M)
+        CPU: 69ms
+     CGroup: /system.slice/chrony.service
+             ├─22117 /usr/sbin/chronyd -F 1
+             └─22118 /usr/sbin/chronyd -F 1
+
+May 15 05:12:19 subseascanning systemd[1]: Starting chrony.service - chrony, an NTP client/server...
+May 15 05:12:19 subseascanning chronyd[22117]: chronyd version 4.5 starting (+CMDMON +NTP +REFCLOCK +RTC +PRIVDROP +SCFILTER +SIGND +ASYNCDNS +NTS +SECHASH +IPV6 -DEBUG)
+May 15 05:12:19 subseascanning chronyd[22117]: Loaded 0 symmetric keys
+May 15 05:12:19 subseascanning chronyd[22117]: Frequency 1.190 +/- 8.809 ppm read from /var/lib/chrony/chrony.drift
+May 15 05:12:19 subseascanning chronyd[22117]: Using right/UTC timezone to obtain leap second data
+May 15 05:12:19 subseascanning chronyd[22117]: Loaded seccomp filter (level 1)
+May 15 05:12:19 subseascanning systemd[1]: Started chrony.service - chrony, an NTP client/server.

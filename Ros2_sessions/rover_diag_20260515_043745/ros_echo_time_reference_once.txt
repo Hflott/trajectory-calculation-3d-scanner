@@ -1,0 +1,4 @@
+# ros_echo_time_reference_once
+# command: timeout 8s ros2 topic echo /time_reference --once
+# time: 2026-05-15T02:38:13Z
+

@@ -1,0 +1,13 @@
+# ros_hz_imu
+# command: timeout 8s ros2 topic hz /imu/data
+# time: 2026-05-15T02:38:48Z
+
+WARNING: topic [/imu/data] does not appear to be published yet
+average rate: 22.485
+	min: 0.003s max: 0.314s std dev: 0.05613s window: 26
+average rate: 30.031
+	min: 0.000s max: 0.314s std dev: 0.03865s window: 65
+average rate: 30.001
+	min: 0.000s max: 0.314s std dev: 0.03314s window: 95
+average rate: 29.787
+	min: 0.000s max: 0.314s std dev: 0.02995s window: 125

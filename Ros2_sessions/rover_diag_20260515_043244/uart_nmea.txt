@@ -1,0 +1,5 @@
+# uart_nmea
+# command: timeout 8s cat /dev/ttyAMA0 | grep -E 'RMC|GGA|ZDA'
+# time: 2026-05-15T02:32:54Z
+
+cat: /dev/ttyAMA0: No such file or directory

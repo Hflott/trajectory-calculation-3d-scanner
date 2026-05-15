@@ -1,0 +1,55 @@
+# ros_topic_info_time_reference
+# command: ros2 topic info /time_reference -v
+# time: 2026-05-15T03:12:56Z
+
+Type: sensor_msgs/msg/TimeReference
+
+Publisher count: 1
+
+Node name: gpsd_json_fix_bridge
+Node namespace: /
+Topic type: sensor_msgs/msg/TimeReference
+Topic type hash: RIHS01_dd66e84cf40bbb5d5a40472e6ecf2675a031334d4c426abdb2ad41801a8efc99
+Endpoint type: PUBLISHER
+GID: 01.0f.7f.01.74.56.93.bb.00.00.00.00.00.00.14.03
+QoS profile:
+  Reliability: RELIABLE
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Subscription count: 2
+
+Node name: capture_service
+Node namespace: /
+Topic type: sensor_msgs/msg/TimeReference
+Topic type hash: RIHS01_dd66e84cf40bbb5d5a40472e6ecf2675a031334d4c426abdb2ad41801a8efc99
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.7f.01.76.56.cb.1f.00.00.00.00.00.00.18.04
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+
+Node name: gnss_sub
+Node namespace: /
+Topic type: sensor_msgs/msg/TimeReference
+Topic type hash: RIHS01_dd66e84cf40bbb5d5a40472e6ecf2675a031334d4c426abdb2ad41801a8efc99
+Endpoint type: SUBSCRIPTION
+GID: 01.0f.7f.01.77.56.4e.3e.00.00.00.00.00.00.6a.04
+QoS profile:
+  Reliability: BEST_EFFORT
+  History (Depth): UNKNOWN
+  Durability: VOLATILE
+  Lifespan: Infinite
+  Deadline: Infinite
+  Liveliness: AUTOMATIC
+  Liveliness lease duration: Infinite
+

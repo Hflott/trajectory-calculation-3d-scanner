@@ -1,0 +1,5 @@
+# ros_topic_info_odom_local
+# command: ros2 topic info /odometry/local -v
+# time: 2026-05-15T03:12:58Z
+
+Unknown topic '/odometry/local'

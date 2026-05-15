@@ -1,0 +1,217 @@
+{
+  "cameras": {
+    "cam0": {
+      "deblur": {
+        "blur_angle_deg": -4.704765514904444,
+        "blur_angle_rad": -0.08211364876936889,
+        "blur_dx_px": 0.04450406057932385,
+        "blur_dy_px": -0.0036626264395969495,
+        "blur_length_clamped_px": 0.044654520941156246,
+        "blur_length_px": 0.044654520941156246,
+        "deblur_strength": 1.0,
+        "delta_theta_rad": [
+          -3.655293780994563e-06,
+          4.441496247226054e-05,
+          6.190237187337245e-05
+        ],
+        "duration_ms": 8.0,
+        "enabled": true,
+        "estimation_mode": "gyro_interval_integration",
+        "exposure_end": "1778790525.545074622",
+        "exposure_ms": 8.0,
+        "exposure_start": "1778790525.537074622",
+        "exposure_time_us": 8000,
+        "focal_px": 1002.0060381030144,
+        "fov_deg": 72.0,
+        "gyro_buffer_samples": 1997,
+        "gyro_buffer_time_max": "1778790527.126144400",
+        "gyro_buffer_time_min": "1778790506.948582915",
+        "gyro_samples_inside_exposure": 1,
+        "gyro_samples_used": 3,
+        "gyro_time_max": "1778790525.545074622",
+        "gyro_time_min": "1778790525.537074622",
+        "image_stamp": "1778790525.541074622",
+        "image_stamp_reference": "midpoint",
+        "imu_to_cam_yaw_deg": 0.0,
+        "integration_method": "trapezoidal",
+        "interp_end": {
+          "alpha": 0.24534797218240958,
+          "left_stamp": "1778790525.542580323",
+          "mode": "linear",
+          "right_stamp": "1778790525.552746696"
+        },
+        "interp_start": {
+          "alpha": 0.4313077244710854,
+          "left_stamp": "1778790525.532898987",
+          "mode": "linear",
+          "right_stamp": "1778790525.542580323"
+        },
+        "kernel_angle_deg": -4.704765514904444,
+        "kernel_angle_rad": -0.0821136487693689,
+        "kernel_length_px": 0.044654520941156246,
+        "max_step_exceeds_limit": false,
+        "max_step_limit_ms": 25.0,
+        "max_step_ms": 5.505701,
+        "max_time_reference_age_ms": 2000.0,
+        "nearest_imu_fallback_policy": "disabled",
+        "nearest_time_reference": {
+          "abs_dt_ms": 19.436859,
+          "dt_ms": -19.436859,
+          "source": "gpsd_tpv",
+          "stamp": "1778790525.521637763",
+          "time_ref": "1778790525.650000095"
+        },
+        "path": "/home/subseascanning/captures/btn_20260514_222842_646_cam0_deblur.jpg",
+        "psf_angle_deg": -4.704765514904444,
+        "psf_length_px": 0.044654520941156246,
+        "require_time_reference": true,
+        "rl_iterations": 12,
+        "status": "copied_low_motion",
+        "timestamp_source": "pps_disciplined_system_clock",
+        "translation": {
+          "enabled": false
+        }
+      },
+      "exposure_time_us": 8000,
+      "nearest_imu": {
+        "angular_velocity": [
+          0.0,
+          0.005859375,
+          0.0078125
+        ],
+        "dt_ms": 1.505701,
+        "linear_acceleration": [
+          -0.35546875,
+          -0.40234375,
+          9.5546875
+        ],
+        "stamp": "1778790525.542580323"
+      },
+      "nearest_time_ref": {
+        "dt_ms": -19.436859,
+        "source": "gpsd_tpv",
+        "stamp": "1778790525.521637763",
+        "time_ref": "1778790525.650000095"
+      },
+      "offset_from_trigger_ms": 2889.808348,
+      "path": "/home/subseascanning/captures/btn_20260514_222842_646_cam0.jpg",
+      "stamp": "1778790525.541074622",
+      "stamp_reference": "midpoint",
+      "timestamp_source": "pps_disciplined_system_clock"
+    },
+    "cam1": {
+      "deblur": {
+        "blur_angle_deg": -14.287561576304283,
+        "blur_angle_rad": -0.2493649915879408,
+        "blur_dx_px": 0.06160215569101254,
+        "blur_dy_px": -0.015687951181476353,
+        "blur_length_clamped_px": 0.06356836790458076,
+        "blur_length_px": 0.06356836790458076,
+        "deblur_strength": 1.0,
+        "delta_theta_rad": [
+          -1.5656543558536425e-05,
+          6.147882682187923e-05,
+          5.105432338809242e-05
+        ],
+        "duration_ms": 8.0,
+        "enabled": true,
+        "estimation_mode": "gyro_interval_integration",
+        "exposure_end": "1778790525.556100197",
+        "exposure_ms": 8.0,
+        "exposure_start": "1778790525.548100197",
+        "exposure_time_us": 8000,
+        "focal_px": 1002.0060381030144,
+        "fov_deg": 72.0,
+        "gyro_buffer_samples": 1997,
+        "gyro_buffer_time_max": "1778790527.126144400",
+        "gyro_buffer_time_min": "1778790506.948582915",
+        "gyro_samples_inside_exposure": 1,
+        "gyro_samples_used": 3,
+        "gyro_time_max": "1778790525.556100197",
+        "gyro_time_min": "1778790525.548100197",
+        "image_stamp": "1778790525.552100197",
+        "image_stamp_reference": "midpoint",
+        "imu_to_cam_yaw_deg": 0.0,
+        "integration_method": "trapezoidal",
+        "interp_end": {
+          "alpha": 0.32144971429469726,
+          "left_stamp": "1778790525.552746696",
+          "mode": "linear",
+          "right_stamp": "1778790525.563179124"
+        },
+        "interp_start": {
+          "alpha": 0.542954109592477,
+          "left_stamp": "1778790525.542580323",
+          "mode": "linear",
+          "right_stamp": "1778790525.552746696"
+        },
+        "kernel_angle_deg": -14.287561576304283,
+        "kernel_angle_rad": -0.2493649915879408,
+        "kernel_length_px": 0.06356836790458076,
+        "max_step_exceeds_limit": false,
+        "max_step_limit_ms": 25.0,
+        "max_step_ms": 4.646499,
+        "max_time_reference_age_ms": 2000.0,
+        "nearest_imu_fallback_policy": "disabled",
+        "nearest_time_reference": {
+          "abs_dt_ms": 19.899191,
+          "dt_ms": 19.899191,
+          "source": "gpsd_tpv",
+          "stamp": "1778790525.571999388",
+          "time_ref": "1778790525.700000047"
+        },
+        "path": "/home/subseascanning/captures/btn_20260514_222842_646_cam1_deblur.jpg",
+        "psf_angle_deg": -14.287561576304283,
+        "psf_length_px": 0.06356836790458076,
+        "require_time_reference": true,
+        "rl_iterations": 12,
+        "status": "copied_low_motion",
+        "timestamp_source": "pps_disciplined_system_clock",
+        "translation": {
+          "enabled": false
+        }
+      },
+      "exposure_time_us": 8000,
+      "nearest_imu": {
+        "angular_velocity": [
+          -0.001953125,
+          0.0078125,
+          0.005859375
+        ],
+        "dt_ms": 0.646499,
+        "linear_acceleration": [
+          -0.35546875,
+          -0.4375,
+          9.48046875
+        ],
+        "stamp": "1778790525.552746696"
+      },
+      "nearest_time_ref": {
+        "dt_ms": 19.899191,
+        "source": "gpsd_tpv",
+        "stamp": "1778790525.571999388",
+        "time_ref": "1778790525.700000047"
+      },
+      "offset_from_trigger_ms": 2900.833923,
+      "path": "/home/subseascanning/captures/btn_20260514_222842_646_cam1.jpg",
+      "stamp": "1778790525.552100197",
+      "stamp_reference": "midpoint",
+      "timestamp_source": "pps_disciplined_system_clock"
+    }
+  },
+  "mode": "still",
+  "schema_version": 2,
+  "session_id": "btn_20260514_222842_646",
+  "time_base": {
+    "image_stamp_reference": "midpoint",
+    "image_timestamp_source": "pps_disciplined_system_clock"
+  },
+  "trajectory": {
+    "enabled": false,
+    "reason": "no odometry samples",
+    "sample_rate_hz": 100.0,
+    "samples": [],
+    "window_ms": 1000.0
+  },
+  "trigger_stamp": "1778790522.651266274"
+}

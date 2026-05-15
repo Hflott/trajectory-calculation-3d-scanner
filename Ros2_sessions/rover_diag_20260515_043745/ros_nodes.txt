@@ -1,0 +1,10 @@
+# ros_nodes
+# command: ros2 node list
+# time: 2026-05-15T02:37:56Z
+
+/bno085_imu
+/cam0_preview_sub
+/cam1/camera
+/cam1_preview_sub
+/gnss_sub
+/subsea_ui_node

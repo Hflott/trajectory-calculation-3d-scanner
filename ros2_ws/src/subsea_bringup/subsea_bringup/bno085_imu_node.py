@@ -27,7 +27,10 @@ class Bno085ImuNode(Node):
         self.declare_parameter("angular_velocity_covariance", 0.02)
         self.declare_parameter("linear_acceleration_covariance", 0.1)
         self.declare_parameter("use_driver_cached_reads", True)
-        self.declare_parameter("read_error_reset_threshold", 30)
+        self.declare_parameter("read_error_reset_threshold", 10)
+        self.declare_parameter("init_retry_count", 6)
+        self.declare_parameter("init_retry_delay_s", 0.45)
+        self.declare_parameter("feature_enable_delay_s", 0.06)
 
         self._imu_topic = str(self.get_parameter("imu_topic").value)
         self._frame_id = str(self.get_parameter("frame_id").value)
@@ -49,6 +52,9 @@ class Bno085ImuNode(Node):
         self._read_error_reset_threshold = max(
             1, int(self.get_parameter("read_error_reset_threshold").value)
         )
+        self._init_retry_count = max(1, int(self.get_parameter("init_retry_count").value))
+        self._init_retry_delay_s = max(0.0, float(self.get_parameter("init_retry_delay_s").value))
+        self._feature_enable_delay_s = max(0.0, float(self.get_parameter("feature_enable_delay_s").value))
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -100,6 +106,9 @@ class Bno085ImuNode(Node):
         self._supports_cached_reads = False
         i2c = self._i2c
         self._i2c = None
+        self._close_i2c(i2c)
+
+    def _close_i2c(self, i2c: Any) -> None:
         if i2c is None:
             return
         for method in ("deinit", "close", "unlock"):
@@ -136,95 +145,97 @@ class Bno085ImuNode(Node):
             return
 
         self._lib_error = None
-        i2c = None
-        try:
-            if self._i2c_bus == 1:
-                i2c = busio.I2C(board.SCL, board.SDA)
-                i2c_path = "/dev/i2c-1 (board.SCL/board.SDA)"
-            else:
-                try:
-                    from adafruit_extended_bus import ExtendedI2C
-                except Exception as e:
-                    raise RuntimeError(
-                        "i2c_bus is not 1, but adafruit_extended_bus is unavailable "
-                        f"({e}). Install on Pi: sudo pip3 install --break-system-packages adafruit-extended-bus"
-                    ) from e
-                i2c = ExtendedI2C(self._i2c_bus)
-                i2c_path = f"/dev/i2c-{self._i2c_bus}"
+        last_error: Optional[Exception] = None
+        for attempt in range(1, self._init_retry_count + 1):
+            i2c = None
+            try:
+                if self._i2c_bus == 1:
+                    i2c = busio.I2C(board.SCL, board.SDA)
+                    i2c_path = "/dev/i2c-1 (board.SCL/board.SDA)"
+                else:
+                    try:
+                        from adafruit_extended_bus import ExtendedI2C
+                    except Exception as e:
+                        raise RuntimeError(
+                            "i2c_bus is not 1, but adafruit_extended_bus is unavailable "
+                            f"({e}). Install on Pi: sudo pip3 install --break-system-packages adafruit-extended-bus"
+                        ) from e
+                    i2c = ExtendedI2C(self._i2c_bus)
+                    i2c_path = f"/dev/i2c-{self._i2c_bus}"
 
-            sensor = BNO08X_I2C(i2c, address=self._addr)
-            # The BNO085 can be slow to settle after a warm process restart.
-            # A short pause avoids feature-enable races on software I2C buses.
-            time.sleep(0.2)
-            bno_report_accel = int(BNO_REPORT_ACCELEROMETER)
-            bno_report_gyro = int(BNO_REPORT_GYROSCOPE)
-            bno_report_rot = int(BNO_REPORT_ROTATION_VECTOR)
-            # Interval in microseconds expected by Adafruit API.
-            interval_us = max(5_000, int(1_000_000.0 / self._rate_hz))
-            enabled_rotation = False
-            enabled_accel = False
-            enabled_gyro = False
+                # Warm process restarts can leave the BNO085 mid-packet. Give the
+                # bus and sensor a moment before the SHTP handshake/feature setup.
+                time.sleep(0.20)
+                sensor = BNO08X_I2C(i2c, address=self._addr)
+                time.sleep(0.25)
 
-            if self._en_rot:
-                sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, interval_us)
-                enabled_rotation = True
-            if self._en_acc:
-                sensor.enable_feature(BNO_REPORT_ACCELEROMETER, interval_us)
-                enabled_accel = True
-            if self._en_gyr:
-                sensor.enable_feature(BNO_REPORT_GYROSCOPE, interval_us)
-                enabled_gyro = True
+                bno_report_accel = int(BNO_REPORT_ACCELEROMETER)
+                bno_report_gyro = int(BNO_REPORT_GYROSCOPE)
+                bno_report_rot = int(BNO_REPORT_ROTATION_VECTOR)
+                # Interval in microseconds expected by Adafruit API.
+                interval_us = max(5_000, int(1_000_000.0 / self._rate_hz))
+                enabled_rotation = False
+                enabled_accel = False
+                enabled_gyro = False
 
-            supports_cached = bool(
-                self._use_driver_cached_reads
-                and hasattr(sensor, "_process_available_packets")
-                and hasattr(sensor, "_readings")
-            )
-            # Write all fields atomically; assign _sensor last so the read thread
-            # only picks up a fully-configured sensor object.
-            with self._sensor_lock:
-                self._bno_report_accel = bno_report_accel
-                self._bno_report_gyro = bno_report_gyro
-                self._bno_report_rot = bno_report_rot
-                self._enabled_rotation = enabled_rotation
-                self._enabled_accel = enabled_accel
-                self._enabled_gyro = enabled_gyro
-                self._supports_cached_reads = supports_cached
-                self._read_error_count = 0
-                old_i2c = self._i2c
-                self._i2c = i2c
-                self._sensor = sensor
-            if old_i2c is not None and old_i2c is not i2c:
-                for method in ("deinit", "close", "unlock"):
-                    fn = getattr(old_i2c, method, None)
-                    if callable(fn):
-                        try:
-                            fn()
-                        except Exception:
-                            pass
+                if self._en_rot:
+                    sensor.enable_feature(BNO_REPORT_ROTATION_VECTOR, interval_us)
+                    enabled_rotation = True
+                    time.sleep(self._feature_enable_delay_s)
+                if self._en_acc:
+                    sensor.enable_feature(BNO_REPORT_ACCELEROMETER, interval_us)
+                    enabled_accel = True
+                    time.sleep(self._feature_enable_delay_s)
+                if self._en_gyr:
+                    sensor.enable_feature(BNO_REPORT_GYROSCOPE, interval_us)
+                    enabled_gyro = True
+                    time.sleep(self._feature_enable_delay_s)
 
-            self.get_logger().info(
-                f"BNO085 ready on I2C {i2c_path} address 0x{self._addr:02X}; "
-                f"features: rot={enabled_rotation} acc={enabled_accel} gyro={enabled_gyro}; "
-                f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz "
-                f"(cached_reads={supports_cached}) "
-                f"(timestamp_mode={self._stamp_mode})"
-            )
-        except Exception as e:
-            with self._sensor_lock:
-                self._close_sensor_locked()
-            if i2c is not None:
-                for method in ("deinit", "close", "unlock"):
-                    fn = getattr(i2c, method, None)
-                    if callable(fn):
-                        try:
-                            fn()
-                        except Exception:
-                            pass
-            self._warn_once(
-                f"BNO085 init failed on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {e} "
-                f"(check wiring and i2cdetect -y -r {self._i2c_bus})"
-            )
+                supports_cached = bool(
+                    self._use_driver_cached_reads
+                    and hasattr(sensor, "_process_available_packets")
+                    and hasattr(sensor, "_readings")
+                )
+                # Write all fields atomically; assign _sensor last so the read thread
+                # only picks up a fully-configured sensor object.
+                with self._sensor_lock:
+                    self._bno_report_accel = bno_report_accel
+                    self._bno_report_gyro = bno_report_gyro
+                    self._bno_report_rot = bno_report_rot
+                    self._enabled_rotation = enabled_rotation
+                    self._enabled_accel = enabled_accel
+                    self._enabled_gyro = enabled_gyro
+                    self._supports_cached_reads = supports_cached
+                    self._read_error_count = 0
+                    old_i2c = self._i2c
+                    self._i2c = i2c
+                    self._sensor = sensor
+                self._close_i2c(old_i2c if old_i2c is not i2c else None)
+
+                self.get_logger().info(
+                    f"BNO085 ready on I2C {i2c_path} address 0x{self._addr:02X}; "
+                    f"features: rot={enabled_rotation} acc={enabled_accel} gyro={enabled_gyro}; "
+                    f"publishing {self._imu_topic} at ~{self._rate_hz:.1f} Hz "
+                    f"(cached_reads={supports_cached}) "
+                    f"(timestamp_mode={self._stamp_mode})"
+                )
+                return
+            except Exception as e:
+                last_error = e
+                with self._sensor_lock:
+                    self._close_sensor_locked()
+                self._close_i2c(i2c)
+                if attempt < self._init_retry_count:
+                    self.get_logger().warn(
+                        f"BNO085 init attempt {attempt}/{self._init_retry_count} failed "
+                        f"on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {e}; retrying"
+                    )
+                    time.sleep(self._init_retry_delay_s)
+
+        self._warn_once(
+            f"BNO085 init failed on /dev/i2c-{self._i2c_bus} at 0x{self._addr:02X}: {last_error} "
+            f"(check wiring and i2cdetect -y -r {self._i2c_bus})"
+        )
 
     def _try_reconnect_if_needed(self) -> None:
         with self._sensor_lock:
